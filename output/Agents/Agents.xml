@@ -1,0 +1,21 @@
+﻿
+<?xml version="1.0" encoding="UTF-8"?> 
+<Agents> 
+    <Agent> 
+        <name>BlackBoardAgent</name>
+    </Agent>     
+    <Agent> 
+        <name>SharedMemoryRpcServerAgent</name>
+    </Agent>     
+    <Agent> 
+        <name>WebSocketRpcServerAgent</name>
+    </Agent> 
+    <Agent> 
+        <name>TimerAgent</name>
+    </Agent> 
+    <Agent> 
+        <name>NewAgent</name>
+    </Agent> 
+
+
+</Agents>

@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "*.S": "assembly",
+        "istream": "cpp",
+        "*.ipp": "cpp"
+    }
+}
