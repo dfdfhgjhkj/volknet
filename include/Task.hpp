@@ -7,9 +7,9 @@ struct MessageTask
 
     }
     //改成移动右值
-    MessageTask(const std::string&& MessageTaskName, std::function<void(std::shared_ptr<MessageBase>)>& Function)
+    MessageTask(std::string_view MessageTaskName, std::function<void(std::shared_ptr<MessageBase>)>&& Function)
     {
-        this->MessageTaskName = MessageTaskName;
+        this->MessageTaskName = std::string(MessageTaskName);
 
         this->Function = std::make_shared<std::function<void(std::shared_ptr<MessageBase>)>>(Function);
     }
@@ -24,9 +24,9 @@ struct Task
 
     }
     //改成移动右值
-    Task(const std::string&& TaskName, std::function<void()>& Function)
+    Task(std::string_view TaskName, std::function<void()>&& Function)
     {
-        this->TaskName = TaskName;
+        this->TaskName = std::string(TaskName);
 
         this->Function = std::make_shared<std::function<void()>>(Function);
     }
