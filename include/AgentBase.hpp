@@ -21,31 +21,31 @@ class AgentBase
 {    
 
 public:    
-        //ÉèÖÃ¶¨Ê±º¯Êı£¬µÚÒ»¸öÖµÎªºÁÃëÊı
-        std::shared_ptr<std::function<int(const UINT64&& num,const std::string&& name,  std::function<void()>&)>> m_setTimerFuncPtr;
-        //²é¿´ĞŞ¸Ä¶¨Ê±º¯Êı
+        //è®¾ç½®å®šæ—¶å‡½æ•°ï¼Œç¬¬ä¸€ä¸ªå€¼ä¸ºæ¯«ç§’æ•°
+        std::shared_ptr<std::function<int(UINT64,std::string_view name,  std::function<void()>&&)>> m_setTimerFuncPtr;
+        //æŸ¥çœ‹ä¿®æ”¹å®šæ—¶å‡½æ•°
         std::shared_ptr<std::function<int(std::shared_ptr<ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>>&)>> m_getTimerFuncPtr;
-        //Ìí¼Órpcº¯Êı,anyÎªstd::shared_ptr<std::Function>
-        std::shared_ptr<std::function<int(const std::string&& funcName, std::function<int(const std::string&, std::string&)>&)>>  m_setRPCFuncPtr;
-        //»ñµÃrpcº¯Êı
-        std::shared_ptr<std::function<int(const std::string&& funcName, std::function<int(const std::string&, std::string&)>&)>>  m_getRPCFuncPtr;
-        //Ìí¼Ódllº¯Êı,anyÎªstd::shared_ptr<std::Function>
-        std::shared_ptr<std::function<int(const std::string&& funcName, std::any&)>>  m_setDllFuncPtr;
-        //»ñµÃdllº¯Êı
-        std::shared_ptr<std::function<int(const std::string&& funcName, std::any&)>>  m_getDllFuncPtr;
-        //Ìí¼ÓÏûÏ¢
-        std::shared_ptr<std::function<int(const std::string&& queueName, std::shared_ptr<MessageBase>& )>> m_pushMessagePtr;
-        //Ìí¼ÓÏûÏ¢´¦Àíº¯Êı
-        std::shared_ptr<std::function<int(const std::string&&, const int&&, const std::string&&, std::function<void(std::shared_ptr<MessageBase>)>&)>>  m_pushCallbackFuncPtr;
+        //æ·»åŠ rpcå‡½æ•°,anyä¸ºstd::shared_ptr<std::Function>
+        std::shared_ptr<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&&)>>  m_setRPCFuncPtr;
+        //è·å¾—rpcå‡½æ•°
+        std::shared_ptr<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&)>>  m_getRPCFuncPtr;
+        //æ·»åŠ dllå‡½æ•°,anyä¸ºstd::shared_ptr<std::Function>
+        std::shared_ptr<std::function<int(std::string_view funcName, std::any&)>>  m_setDllFuncPtr;
+        //è·å¾—dllå‡½æ•°
+        std::shared_ptr<std::function<int(std::string_view funcName, std::any&)>>  m_getDllFuncPtr;
+        //æ·»åŠ æ¶ˆæ¯
+        std::shared_ptr<std::function<int(std::string_view queueName, std::shared_ptr<MessageBase> )>> m_pushMessagePtr;
+        //æ·»åŠ æ¶ˆæ¯å¤„ç†å‡½æ•°
+        std::shared_ptr<std::function<int(std::string_view, int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>&&)>>  m_pushCallbackFuncPtr;
         //logger
         std::shared_ptr<spdlog::logger> m_loggerPtr;
         //name
         std::string m_agentName;
         AgentBase();
         virtual ~AgentBase();
-        //³õÊ¼»¯
+        //åˆå§‹åŒ–
         virtual void initialize();
-        //ÔËĞĞ
+        //è¿è¡Œ
         virtual void run();
      private:
 };
