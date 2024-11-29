@@ -21,17 +21,17 @@ class TaskScheduler
 public:
 
 
-    //ÔÚtimermapÖĞÌí¼Óº¯Êı
-    int SetTimerFunc(const UINT64&& num,const std::string&& name,std::function<void()>& func)
+    //åœ¨timermapä¸­æ·»åŠ å‡½æ•°
+    int SetTimerFunc(UINT64 num,std::string_view name,std::function<void()>&& func)
     {
         if (m_timerFunctionMapPtr->find(num)!=m_timerFunctionMapPtr->end())
         {
-            (*m_timerFunctionMapPtr)[num][name]=std::make_shared<std::function<void()>>(func);
+            (*m_timerFunctionMapPtr)[num][std::string(name)]=std::make_shared<std::function<void()>>(func);
         }
         else
         {
             m_timerFunctionMapPtr->insert(std::make_pair(num, std::map<std::string, std::shared_ptr<std::function<void()>>>()));
-            (*m_timerFunctionMapPtr)[num][name] = std::make_shared<std::function<void()>>(func);
+            (*m_timerFunctionMapPtr)[num][std::string(name)] = std::make_shared<std::function<void()>>(func);
         }
         return 0;
     }
@@ -41,27 +41,27 @@ public:
 
         return 0;
     }
-    //ÔÚrpcmapÖĞÌí¼Óº¯Êı
-    int SetRPCFunc(const std::string&& funcName, std::function<int(const std::string&, std::string&)>& func)
+    //åœ¨rpcmapä¸­æ·»åŠ å‡½æ•°
+    int SetRPCFunc(std::string_view funcName, std::function<int(const std::string&, std::string&)>&& func)
     {
-        if (m_rpcFunctionMapPtr->find(funcName) != m_rpcFunctionMapPtr->end())
+        if (m_rpcFunctionMapPtr->find(std::string(funcName)) != m_rpcFunctionMapPtr->end())
         {
-            (*m_rpcFunctionMapPtr)[funcName] = std::make_shared<std::function<int(const std::string&, std::string&)>>(func);
+            (*m_rpcFunctionMapPtr)[std::string(funcName)] = std::make_shared<std::function<int(const std::string&, std::string&)>>(func);
 
         }
         else
         {
-            m_rpcFunctionMapPtr->insert(std::make_pair(funcName, std::make_shared<std::function<int(const std::string&,std::string&)>>(func)));
+            m_rpcFunctionMapPtr->insert(std::make_pair(std::string(funcName), std::make_shared<std::function<int(const std::string&,std::string&)>>(func)));
         }
         return 0;
     }
 
-    //´ÓrpcmapÖĞ»ñµÃº¯Êı
-    int GetRPCFunc(const std::string&& funcName,std::function<int(const std::string&, std::string&)>& funcPtr)
+    //ä»rpcmapä¸­è·å¾—å‡½æ•°
+    int GetRPCFunc(std::string_view funcName,std::function<int(const std::string&, std::string&)>& funcPtr)
     {
-        if (m_rpcFunctionMapPtr->find(funcName) != m_rpcFunctionMapPtr->end())
+        if (m_rpcFunctionMapPtr->find(std::string(funcName)) != m_rpcFunctionMapPtr->end())
         {
-            funcPtr = *(*m_rpcFunctionMapPtr)[funcName];
+            funcPtr = *(*m_rpcFunctionMapPtr)[std::string(funcName)];
             return 0;
         }
         else
@@ -70,26 +70,26 @@ public:
         }
     }
 
-    //ÔÚanymapÖĞÌí¼Óº¯Êı,any Îªstd::Function
-    int SetDllFunc(const std::string&& funcName,std::any& func)
+    //åœ¨anymapä¸­æ·»åŠ å‡½æ•°,any ä¸ºstd::Function
+    int SetDllFunc(std::string_view funcName,std::any& func)
     {
-        if (m_dllFunctionMapPtr->find(funcName) != m_dllFunctionMapPtr->end())
+        if (m_dllFunctionMapPtr->find(std::string(funcName)) != m_dllFunctionMapPtr->end())
         {
-             (*m_dllFunctionMapPtr)[funcName]=std::make_shared<std::any>(func) ;
+             (*m_dllFunctionMapPtr)[std::string(funcName)]=std::make_shared<std::any>(func) ;
             
         }
         else
         {
-            m_dllFunctionMapPtr->insert(std::make_pair(funcName, std::make_shared<std::any>(func)));
+            m_dllFunctionMapPtr->insert(std::make_pair(std::string(funcName), std::make_shared<std::any>(func)));
         }
     }
 
-    //´ÓanymapÖĞ»ñµÃº¯Êı
-    int GetDllFunc(const std::string&& funcName, std::any& func)
+    //ä»anymapä¸­è·å¾—å‡½æ•°
+    int GetDllFunc(std::string_view funcName, std::any& func)
     {
-        if (m_dllFunctionMapPtr->find(funcName)!=m_dllFunctionMapPtr->end())
+        if (m_dllFunctionMapPtr->find(std::string(funcName))!=m_dllFunctionMapPtr->end())
         {
-            func = (*(*m_dllFunctionMapPtr)[funcName]);
+            func = (*(*m_dllFunctionMapPtr)[std::string(funcName)]);
             return 0;
         }
         else
@@ -97,13 +97,13 @@ public:
             return 1;
         }
     }
-    //Ìí¼ÓÏûÏ¢
-    int AddMessage(const std::string&& queueName,std::shared_ptr<MessageBase>& messageBasePtr)
+    //æ·»åŠ æ¶ˆæ¯
+    int AddMessage(std::string_view queueName,std::shared_ptr<MessageBase>&& messageBasePtr)
     {
-        auto it =m_messageQueueMapPtr->find(queueName); 
+        auto it =m_messageQueueMapPtr->find(std::string(queueName));
         if (it != m_messageQueueMapPtr->end())
         {             
-            (*m_messageQueueMapPtr)[queueName].push(messageBasePtr);
+            (*m_messageQueueMapPtr)[std::string(queueName)].push(messageBasePtr);
         }
         else
         {           
@@ -112,20 +112,20 @@ public:
         }
         return 0;
     }
-    //ÉèÖÃ´¦Àíº¯Êı
-    int SetAsyncFunc(const std::string&& MessageType, const int&& Number, const std::string&& Name, std::function<void(std::shared_ptr<MessageBase>)>& Func)
+    //è®¾ç½®å¤„ç†å‡½æ•°
+    int SetAsyncFunc(std::string_view MessageType, int Number, std::string_view Name, std::function<void(std::shared_ptr<MessageBase>)>&& Func)
     {
-        MessageTask new1(Name, Func);
+        MessageTask new1(std::string(Name), Func);
 
-        if (m_messageDealMapPtr->find(MessageType) != m_messageDealMapPtr->end())
+        if (m_messageDealMapPtr->find(std::string(MessageType)) != m_messageDealMapPtr->end())
         {
-            (*m_messageDealMapPtr)[MessageType][Number] = new1;
+            (*m_messageDealMapPtr)[std::string(MessageType)][Number] = new1;
         }
         else
         {
             std::map<int, MessageTask> newMap = std::map<int, MessageTask>();
             newMap.insert(std::make_pair(Number, new1));
-            m_messageDealMapPtr->insert(std::make_pair(MessageType, newMap));
+            m_messageDealMapPtr->insert(std::make_pair(std::string(MessageType), newMap));
         }
         return 0;
     }
@@ -142,22 +142,22 @@ public:
     {
 
     }
-    //ÔËĞĞÈÎÎñ
+    //è¿è¡Œä»»åŠ¡
     void runTask()
     {
-        //¿ªÆôËÀÑ­»·´¦ÀíÈÎÎñ
+        //å¼€å¯æ­»å¾ªç¯å¤„ç†ä»»åŠ¡
         runTask_();
     }
-    //¶¨Ê±·½·¨
+    //å®šæ—¶æ–¹æ³•
     std::shared_ptr<ThreadSafeMap<UINT64, std::map<std::string,std::shared_ptr<std::function<void()>>>>> m_timerFunctionMapPtr;
-    //º¯Êımap,ÓÃÓÚRPC
+    //å‡½æ•°map,ç”¨äºRPC
     std::shared_ptr<ThreadSafeMap<std::string, std::shared_ptr<std::function<int(const std::string&, std::string&)>>>> m_rpcFunctionMapPtr;
-    //º¯Êımap,ÓÃÓÚDLL,anyÎªstd::shared_ptr<Func>
+    //å‡½æ•°map,ç”¨äºDLL,anyä¸ºstd::shared_ptr<Func>
     std::shared_ptr<ThreadSafeMap<std::string, std::shared_ptr<std::any>>> m_dllFunctionMapPtr;
-    //½«ÏûÏ¢·ÅÈë²»Í¬ÀàĞÍµÄÏûÏ¢¶ÓÁĞ
+    //å°†æ¶ˆæ¯æ”¾å…¥ä¸åŒç±»å‹çš„æ¶ˆæ¯é˜Ÿåˆ—
     std::shared_ptr<std::unordered_map<std::string, ThreadSafePriorityQueue<std::shared_ptr<MessageBase>> >> m_messageQueueMapPtr;
-    //²»Í¬ÀàĞÍÏûÏ¢µÄ´¦Àíº¯ÊıËùÓĞº¯Êı¶¼°ÑĞÅÏ¢ÌáÇ°bind
-    //Ïß³Ì°²È«
+    //ä¸åŒç±»å‹æ¶ˆæ¯çš„å¤„ç†å‡½æ•°æ‰€æœ‰å‡½æ•°éƒ½æŠŠä¿¡æ¯æå‰bind
+    //çº¿ç¨‹å®‰å…¨
     std::shared_ptr<ThreadSafeMap<std::string, std::map<int,MessageTask>>> m_messageDealMapPtr;
     std::shared_ptr<spdlog::logger> logger;
     
@@ -168,7 +168,7 @@ private:
 
         while (1)
         {
-                        //·ÇÓÀ¾ÃÈÎÎñÖ´ĞĞ
+                        //éæ°¸ä¹…ä»»åŠ¡æ‰§è¡Œ
             for (std::unordered_map<std::string, ThreadSafePriorityQueue<std::shared_ptr<MessageBase>>>::iterator it = m_messageQueueMapPtr->begin(); it != m_messageQueueMapPtr->end(); ++it)
             {
                 if (it->second.empty())
@@ -176,13 +176,13 @@ private:
                     continue;
                 }
                 else
-                {   //µ÷ÓÃÇ°°Ñº¯ÊıÈ¡³öÀ´±ÜÃâ³ö´í
+                {   //è°ƒç”¨å‰æŠŠå‡½æ•°å–å‡ºæ¥é¿å…å‡ºé”™
                     std::shared_ptr<std::map<int, MessageTask>> TaskMapPtr = std::make_shared<std::map<int, MessageTask>>((*m_messageDealMapPtr)[it->second.top()->type]);
                     std::function<void()> taskRun = [&it, this, TaskMapPtr]()
                         {
                             for (std::map<int, MessageTask>::iterator taskIt = TaskMapPtr->begin(); taskIt != TaskMapPtr->end(); taskIt++)
                             {                            
-                                //ÅĞ¶ÏÔÚÖ´ĞĞÇ°ÊÇ·ñ³¬Ê±
+                                //åˆ¤æ–­åœ¨æ‰§è¡Œå‰æ˜¯å¦è¶…æ—¶
                                 std::chrono::microseconds duration_time_before = std::chrono::duration_cast<std::chrono::microseconds>(it->second.top()->m_finish - std::chrono::high_resolution_clock::now());
                                 if (duration_time_before.count() < 0)
                                 {
@@ -193,7 +193,7 @@ private:
                                     spdlog::info("task serial number:{} task name:{} after task run time:{} no timeout", std::to_string(taskIt->first), taskIt->second.MessageTaskName, std::to_string(duration_time_before.count()));
                                 }
                                 (*(taskIt->second.Function))(it->second.top());                              
-                                //ÅĞ¶ÏÖ´ĞĞºóÊÇ·ñ³¬Ê±                         
+                                //åˆ¤æ–­æ‰§è¡Œåæ˜¯å¦è¶…æ—¶                         
                                 std::chrono::microseconds duration_time_after = std::chrono::duration_cast<std::chrono::microseconds>(it->second.top()->m_finish - std::chrono::high_resolution_clock::now());
                                 if (duration_time_after.count() < 0)
                                 {
@@ -209,7 +209,7 @@ private:
 
                     std::future<void> futureResult = std::async(std::launch::async, taskRun);
                     futureResult.get();
-                    //·µ»Ø½á¹û
+                    //è¿”å›ç»“æœ
                     it->second.pop();
                 }
             }
