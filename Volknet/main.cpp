@@ -154,7 +154,7 @@ int main()
             agentPtr->m_setRPCFuncPtr= setRPCFuncPtr;
             //获得rpc函数
             agentPtr->m_getRPCFuncPtr= getRPCFuncPtr;
-            //添加dll函数,any为std::shared_ptr<std::Function>
+            //添加dll函数,any为std::Function
             agentPtr->m_setDllFuncPtr= setDllFuncPtr;
             //获得dll函数
             agentPtr->m_getDllFuncPtr= getDllFuncPtr;
