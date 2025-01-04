@@ -1,198 +1,187 @@
-/**
-*
-*	buttonrpc library
-*	Copyright 2018-04-28 Button
-*
-*/
+#ifndef _SERIALIZER_H_
+#define _SERIALIZER_H_
 
-#pragma once
+#include <assert.h>
+#include <string>
 #include <vector>
-#include <sstream>
 #include <algorithm>
-#include <cstdint>
-#include <utility>
-#include <tuple>
-using namespace std;
+#include <memory>
+#include <initializer_list>
 
-class StreamBuffer : public vector<char>
-{
+
+
+// 存储数据流的容器
+class Buffer : public std::vector<char> {
 public:
-	StreamBuffer(){ m_curpos = 0; }
-	StreamBuffer(const char* in, size_t len){
-		m_curpos = 0;
-		insert(begin(), in, in+len);
-	}
-    ~StreamBuffer(){ }
-
-	void reset(){ m_curpos = 0; }
-	const char* data(){ return &(*this)[0]; }
-	const char* current(){ return&(*this)[m_curpos]; }
-	void offset(int k){ m_curpos += k; }
-	bool is_eof(){ return (m_curpos >= size()); }
-	void input( char* in, size_t len){ insert(end(), in, in+len); }
-	int findc(char c){
-		iterator itr = find(begin()+m_curpos, end(), c);		
-		if (itr != end())
-		{
-			return itr - (begin()+m_curpos);
-		}
-		return -1;
-	}
+    typedef std::shared_ptr<Buffer> ptr;
+    Buffer() : curpos_(0) {}
+    Buffer(const char* s, size_t len) : curpos_(0)
+    {
+        insert(begin(), s, s + len);
+    }
+    const char* data() { return &(*this)[0]; }
+    const char* curdata() { return &(*this)[curpos_]; }
+    size_t cursize() const { return size() - curpos_; }
+    void offset(int k) { curpos_ += k; }
+    void append(const char* s, size_t len) { insert(end(), s, s + len); }
+    void reset() { 
+        curpos_ = 0;
+        clear();
+    }
 
 private:
-	// 当前字节流位置
-	unsigned int m_curpos;
+    size_t curpos_;
 };
 
-class Serializer
+// 主机字节序是否小端字节序
+static bool isLittleEndian()
 {
+    static uint16_t flag = 1;
+    static bool little_end_flag = *((uint8_t*)&flag) == 1;
+    return little_end_flag;
+}
+
+class Serializer {
 public:
-    Serializer() { m_byteorder = LittleEndian; }
-    ~Serializer(){ }
+    typedef std::shared_ptr<Serializer> ptr;
+    Serializer() { buffer_ = std::make_shared<Buffer>(); }
+    Serializer(const char* s, size_t len)
+    {
+        buffer_ = std::make_shared<Buffer>();
+        input(s, len);
+    }
+    Serializer(Buffer::ptr buffer)
+        : buffer_(buffer)
+    {
+    }
 
-	Serializer(StreamBuffer dev, int byteorder=LittleEndian){
-		m_byteorder = byteorder;
-		m_iodevice = dev;
-	}
+    template <typename T>
+    void input_type(T t);
 
-public:
-	enum ByteOrder {
-		BigEndian,
-		LittleEndian
-	};
+    template<typename T>
+    void input_type(std::vector<T> v);
 
-public:
-	void reset(){
-		m_iodevice.reset();
-	}
-	int size(){
-		return m_iodevice.size();
-	}
-	void skip_raw_date(int k){
-		m_iodevice.offset(k);
-	}
-	const char* data(){
-		return m_iodevice.data();
-	}
-	void byte_orser(char* in, int len){
-		if (m_byteorder == BigEndian){
-			reverse(in, in+len);
-		}
-	}
-	void write_raw_data(char* in, int len){
-		m_iodevice.input(in, len);
-		m_iodevice.offset(len);
-	}
-	const char* current(){
-		return m_iodevice.current();
-	}
-	void clear(){
-		m_iodevice.clear();
-		reset();
-	}
+    template <typename T>
+    void output_type(T& t);
 
-	template<typename T>
-	void output_type(T& t);
+    template<typename T>
+    void output_type(std::vector<T>& v);
 
-	template<typename T>
-	void input_type(T t);
+    void reset() { buffer_->reset(); }
+    void clear() { reset(); }
+    void input(const char* data, int len) { buffer_->append(data, len); }
 
-	// 直接给一个长度， 返回当前位置以后x个字节数据
-	void get_length_mem(char* p, int len){
-		memcpy(p, m_iodevice.current(), len);
-		m_iodevice.offset(len);
-	}
+    template <typename Tuple, std::size_t Id>
+    void getv(Serializer& ds, Tuple& t)
+    {
+        ds >> std::get<Id>(t);
+    }
 
-public:
-	template<typename Tuple, std::size_t Id>
-	void getv(Serializer& ds, Tuple& t) {
-		ds >> std::get<Id>(t);
-	}
+    template <typename Tuple, std::size_t... I>
+    Tuple get_tuple(std::index_sequence<I...>)
+    {
+        Tuple t;
+        std::initializer_list<int> { (getv<Tuple, I>(*this, t), 0)... };
+        return t;
+    }
 
-	template<typename Tuple, std::size_t... I>
-	Tuple get_tuple(std::index_sequence<I...>) {
-		Tuple t;
-		initializer_list<int>{((getv<Tuple, I>(*this, t)), 0)...};
-		return t;
-	}
+    template <typename T>
+    Serializer& operator>>(T& i)
+    {
+        output_type(i);
+        return *this;
+    }
 
-	template<typename T>
-	Serializer &operator >> (T& i){
-		output_type(i); 
-		return *this;
-	}
+    template <typename T>
+    Serializer& operator<<(T i)
+    {
+        input_type(i);
+        return *this;
+    }
 
-	template<typename T>
-	Serializer &operator << (T i){
-		input_type(i);
-		return *this;
-	}
+    const char* data() { return buffer_->curdata(); }
+    size_t size() const { return buffer_->cursize(); }
+    std::string toString()
+    {
+        return std::string(data(), size());
+    }
 
 private:
-	int  m_byteorder;
-	StreamBuffer m_iodevice;
+    static void byteOrder(char* s, int len)
+    {
+        if (isLittleEndian())
+            std::reverse(s, s + len);
+    }
+
+private:
+    int byteOrder_;
+    Buffer::ptr buffer_;
 };
 
-template<typename T>
-inline void Serializer::output_type(T& t)
+template <typename T>
+inline void Serializer::input_type(T v)
 {
-	int len = sizeof(T);
-	char* d = new char[len];
-	if (!m_iodevice.is_eof()){
-		memcpy(d, m_iodevice.current(), len);
-		m_iodevice.offset(len);
-		byte_orser(d, len);
-		t = *reinterpret_cast<T*>(&d[0]);
-	}
-	delete [] d;
+    size_t len = sizeof(v);
+    char* p = reinterpret_cast<char*>(&v);
+    byteOrder(p, len);
+    input(p, len);
 }
 
-template<>
-inline void Serializer::output_type(std::string& in)
+
+template <typename T>
+inline void Serializer::input_type(std::vector<T> v)
 {
-	int marklen = sizeof(uint16_t);
-	char* d = new char[marklen];
-	memcpy(d, m_iodevice.current(), marklen);
-	byte_orser(d, marklen);
-	int len = *reinterpret_cast<uint16_t*>(&d[0]);
-	m_iodevice.offset(marklen);
-	delete [] d;
-	if (len == 0) return;
-	in.insert(in.begin(), m_iodevice.current(), m_iodevice.current() + len);
-	m_iodevice.offset(len);
+    uint16_t vecLen = v.size();
+    input_type(vecLen);
+    for (auto it = v.begin(); it != v.end(); ++it) 
+    {
+        input_type(*it);
+    }
+}
+template <>
+inline void Serializer::input_type(std::string v)
+{
+    uint16_t len = v.size();
+    input_type(len);
+    byteOrder(const_cast<char*>(v.c_str()), len);
+    input(v.c_str(), len);
 }
 
-template<typename T>
-inline void Serializer::input_type(T t)
+template <>
+inline void Serializer::input_type(const char* v)
 {
-	int len = sizeof(T);
-	char* d = new char[len];
-	const char* p = reinterpret_cast<const char*>(&t);
-	memcpy(d, p, len);
-	byte_orser(d, len);
-	m_iodevice.input(d, len);
-	delete [] d;
+    input_type<std::string>(std::string(v));
 }
 
-template<>
-inline void Serializer::input_type(std::string in)
+template <typename T>
+inline void Serializer::output_type(T& v)
 {
-	// 先存入字符串长度
-	uint16_t len = in.size();
-	char* p = reinterpret_cast< char*>(&len);
-	byte_orser(p, sizeof(uint16_t));
-	m_iodevice.input(p, sizeof(uint16_t));
-
-	// 存入字符串
-	if (len == 0) return;
-	char* d = new char[len];
-	memcpy(d, in.c_str(), len);
-	m_iodevice.input(d, len);
-	delete [] d;
+    size_t len = sizeof(v);
+    assert(size() >= len);
+    ::memcpy(&v, data(), len);
+    buffer_->offset(len);
+    byteOrder(reinterpret_cast<char*>(&v), len);
 }
 
-template<>
-inline void Serializer::input_type(const char* in)
+template <typename T>
+inline void Serializer::output_type(std::vector<T>& v)
 {
-	input_type<std::string>(std::string(in));
+    uint16_t vecLen = 0;
+    output_type(vecLen);
+    v.resize(vecLen);
+    for (size_t i = 0; i < vecLen; i++)
+    {
+        output_type(v[i]);
+    }
 }
+template <>
+inline void Serializer::output_type(std::string& v)
+{
+    uint16_t strLen = 0;
+    output_type(strLen);
+    v = std::string(data(), strLen);
+    buffer_->offset(strLen);
+    byteOrder(const_cast<char*>(v.c_str()), strLen);
+}
+
+#endif
