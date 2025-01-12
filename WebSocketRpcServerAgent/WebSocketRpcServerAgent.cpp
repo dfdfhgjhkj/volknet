@@ -127,7 +127,7 @@ public:
         //默认成功调用
         int resCode = 1;
 
-        if ((*(agentPtr->m_getRPCFuncPtr))(std::move(rpcDataJson["name"].get<std::string>()), rpcFunc) != 0)
+        if (agentPtr->m_getRPCFunc(std::move(rpcDataJson["name"].get<std::string>()), rpcFunc) != 0)
         {
             resCode = 2;
         }
