@@ -38,9 +38,9 @@ void NewAgent::initialize()
 	// 打印字符串
 	spdlog::info("{} initialize", this->m_agentName);
 	std::any publishFuncAny;
-	(*m_getDllFuncPtr)("publish", publishFuncAny);
+	m_getDllFunc("publish", publishFuncAny);
 	std::any subscribeFuncAny;
-	(*m_getDllFuncPtr)("subscribe", subscribeFuncAny);
+	m_getDllFunc("subscribe", subscribeFuncAny);
 	try
 	{
 		publishFunc = std::any_cast<std::function<bool(const std::string&&, std::any&)>>(publishFuncAny);
@@ -81,8 +81,8 @@ void NewAgent::run()
 	std::string funcname5("func5");
 	try
 	{
-		(*m_setTimerFuncPtr)(UINT64(1), "func1",func1);
-		(*m_setTimerFuncPtr)(UINT64(5), std::move(funcname5), func5);
+		m_setTimerFunc(UINT64(1), "func1",func1);
+		m_setTimerFunc(UINT64(5), std::move(funcname5), func5);
 		spdlog::info("{} run", this->m_agentName);
 
 	}
