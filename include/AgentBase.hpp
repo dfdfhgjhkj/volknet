@@ -22,21 +22,21 @@ class AgentBase
 
 public:    
         //设置定时函数，第一个值为毫秒数
-        std::shared_ptr<std::function<int(UINT64,std::string_view name,  std::function<void()>&&)>> m_setTimerFuncPtr;
+        std::function<int(UINT64,std::string_view name,  std::function<void()>&&)> m_setTimerFuncPtr;
         //查看修改定时函数
-        std::shared_ptr<std::function<int(std::shared_ptr<ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>>&)>> m_getTimerFuncPtr;
+        std::function<int(std::shared_ptr<ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>>&)> m_getTimerFuncPtr;
         //添加rpc函数,any为std::shared_ptr<std::Function>
-        std::shared_ptr<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&&)>>  m_setRPCFuncPtr;
+        std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&&)>  m_setRPCFuncPtr;
         //获得rpc函数
-        std::shared_ptr<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&)>>  m_getRPCFuncPtr;
+        std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&)>  m_getRPCFuncPtr;
         //添加dll函数,any为std::shared_ptr<std::Function>
-        std::shared_ptr<std::function<int(std::string_view funcName, std::any&)>>  m_setDllFuncPtr;
+        std::function<int(std::string_view funcName, std::any&)>  m_setDllFuncPtr;
         //获得dll函数
-        std::shared_ptr<std::function<int(std::string_view funcName, std::any&)>>  m_getDllFuncPtr;
+        std::function<int(std::string_view funcName, std::any&)>  m_getDllFuncPtr;
         //添加消息
-        std::shared_ptr<std::function<int(std::string_view queueName, std::shared_ptr<MessageBase> )>> m_pushMessagePtr;
+        std::function<int(std::string_view queueName, std::shared_ptr<MessageBase> )> m_pushMessagePtr;
         //添加消息处理函数
-        std::shared_ptr<std::function<int(std::string_view, int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>&&)>>  m_pushCallbackFuncPtr;
+        std::function<int(std::string_view, int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>&&)>  m_pushCallbackFuncPtr;
         //logger
         std::shared_ptr<spdlog::logger> m_loggerPtr;
         //name
