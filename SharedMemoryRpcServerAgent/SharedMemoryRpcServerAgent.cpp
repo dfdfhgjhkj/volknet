@@ -54,34 +54,25 @@ IPCHandleMwMrQueueT;
 
 void Creator()
 {
-
 	// 删除遗留的共享内存
 	boost::interprocess::shared_memory_object::remove("MySharedMemory");
-
 	// 构建新的托管共享内存区
 	boost::interprocess::managed_shared_memory segment(boost::interprocess::create_only,
 		"MySharedMemory",  //segment name
 		65536 * 1024 * 10);
-
 	// 定义托管共享内存区的分配器
 	const MyIPCHandleAllocatorT alloc_inst(segment.get_segment_manager());
-
 	try
 	{
-
 		// 创建共享内存中的用于传递IPCHandleT的无锁队列,放请求
 		IPCHandleMwMrQueueT* pMyIPCHandleQueueRequest =segment.construct<IPCHandleMwMrQueueT>("IPCHandleQueueRequest")(alloc_inst);
 		// 创建共享内存中的用于传递IPCHandleT的无锁队列,放结果
 		IPCHandleMwMrQueueT* pMyIPCHandleQueueResult = segment.construct<IPCHandleMwMrQueueT>("IPCHandleQueueResult")(alloc_inst);
-
 	}
 	catch (std::exception& e)
 	{
 		std::cout << e.what() << std::endl;
 	}
-
-
-
 }
 
 
@@ -132,8 +123,6 @@ void Producer()
 
 void Consumer(AgentBase* agentPtr)
 {
-	//std::cout << "Consumer" << std::endl;
-
 	//附接目标共享内存
 	boost::interprocess::managed_shared_memory segment(boost::interprocess::open_only,
 		"MySharedMemory");  //segment name
@@ -176,7 +165,7 @@ void Consumer(AgentBase* agentPtr)
 			//默认成功调用
 			int resCode = 1;
 
-			if ((*(agentPtr->m_getRPCFuncPtr))(std::move(rpcDataJson["name"].get<std::string>()), rpcFunc) != 0)
+			if (agentPtr->m_getRPCFunc(std::move(rpcDataJson["name"].get<std::string>()), rpcFunc) != 0)
 			{
 				resCode = 2;
 			}
@@ -226,7 +215,6 @@ void SharedMemoryRpcAgent::initialize()
 	spdlog::set_default_logger(m_loggerPtr);
 	// 打印字符串
 	spdlog::info("{} initialize", this->m_agentName);
-
 }
 void SharedMemoryRpcAgent::run()
 {
@@ -234,9 +222,6 @@ void SharedMemoryRpcAgent::run()
 	{
 		spdlog::info("{} run", this->m_agentName);
 		Creator();
-
-
-
 		Consumer(this);
 
 	}
