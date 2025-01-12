@@ -7,9 +7,6 @@
 #include <boost/bind/bind.hpp>
 class TimerAgent : public AgentBase
 {
-
-
-
 public:
 
 	TimerAgent();
@@ -44,7 +41,7 @@ void TimerAgent::initialize()
 	spdlog::set_default_logger(m_loggerPtr);
 	// 打印字符串
 	spdlog::info("{} initialize", this->m_agentName);
-	(*m_getTimerFuncPtr)(timerFuncMapPtr);
+	m_getTimerFunc(timerFuncMapPtr);
 	
 
 }
@@ -55,7 +52,6 @@ void TimerAgent::run()
 		m_timer.async_wait(boost::bind(&TimerAgent::timeout, this));
 		m_timer_ioc.run();
 		spdlog::info("{} run", this->m_agentName);
-
 	}
 	catch (std::exception& e)
 	{
