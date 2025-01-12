@@ -146,22 +146,22 @@ int main()
             std::shared_ptr<AgentBase> agentPtr(newAgent);
             agentPtrVector.push_back(agentPtr);
             //设置定时函数，第一个值为毫秒数
-            agentPtr->m_setTimerFuncPtr= setTimerFuncPtr;
+            agentPtr->m_setTimerFunc= *setTimerFuncPtr;
             //获得定时函数
             //设置定时函数，第一个值为毫秒数
-            agentPtr->m_getTimerFuncPtr = getTimerFuncPtr;
-            //添加rpc函数,any为std::shared_ptr<std::Function>
-            agentPtr->m_setRPCFuncPtr= setRPCFuncPtr;
+            agentPtr->m_getTimerFunc = *getTimerFuncPtr;
+            //添加rpc函数
+            agentPtr->m_setRPCFunc= *setRPCFuncPtr;
             //获得rpc函数
-            agentPtr->m_getRPCFuncPtr= getRPCFuncPtr;
+            agentPtr->m_getRPCFunc= *getRPCFuncPtr;
             //添加dll函数,any为std::Function
-            agentPtr->m_setDllFuncPtr= setDllFuncPtr;
+            agentPtr->m_setDllFunc= *setDllFuncPtr;
             //获得dll函数
-            agentPtr->m_getDllFuncPtr= getDllFuncPtr;
+            agentPtr->m_getDllFunc= *getDllFuncPtr;
             ////添加消息
-            agentPtr->m_pushMessagePtr= pushMessagePtr;
+            agentPtr->m_pushMessageFunc= *pushMessagePtr;
             ////添加消息处理函数
-            agentPtr->m_pushCallbackFuncPtr = pushCallbackFuncPtr;
+            agentPtr->m_pushCallbackFunc = *pushCallbackFunc;
             agentPtr->m_loggerPtr = loggerPtr;
             agentPtr->m_agentName = agentName;
 
