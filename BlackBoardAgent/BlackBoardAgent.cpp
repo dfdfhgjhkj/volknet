@@ -111,10 +111,10 @@ void DataBaseAgent::initialize()
     std::any subscribeFunc = std::make_any<std::function<bool(const std::string&&, std::any&)>>(std::bind(&DataBaseAgent::subscribe, this, std::placeholders::_1, std::placeholders::_2));
     std::any publishStringFunc = std::make_any<std::function<bool(const std::string&&, std::string&)>>(std::bind(&DataBaseAgent::publish_string, this, std::placeholders::_1, std::placeholders::_2));
     std::any subscribeStringFunc = std::make_any<std::function<bool(const std::string&&, std::string&)>>(std::bind(&DataBaseAgent::subscribe_string, this, std::placeholders::_1, std::placeholders::_2));
-    (*m_setDllFuncPtr)("publish", publishFunc);
-    (*m_setDllFuncPtr)("subscribe", subscribeFunc);
-    (*m_setDllFuncPtr)("publish_string", publishStringFunc);
-    (*m_setDllFuncPtr)("subscribe_string", subscribeStringFunc);
+    m_setDllFunc("publish", publishFunc);
+    m_setDllFunc("subscribe", subscribeFunc);
+    m_setDllFunc("publish_string", publishStringFunc);
+    m_setDllFunc("subscribe_string", subscribeStringFunc);
 
     std::function<int(const std::string&, std::string&)> RpcGetTopicFunc = [&](const std::string& in, std::string&out)
         {
