@@ -22,7 +22,7 @@ public:
 
 
     //在timermap中添加函数
-    int SetTimerFunc(UINT64 num,std::string_view name,std::function<void()>&& func)
+    int SetTimerFunc(UINT64 num,std::string_view name,std::function<void()> func)
     {
         if (m_timerFunctionMapPtr->find(num)!=m_timerFunctionMapPtr->end())
         {
@@ -42,7 +42,7 @@ public:
         return 0;
     }
     //在rpcmap中添加函数
-    int SetRPCFunc(std::string_view funcName, std::function<int(const std::string&, std::string&)>&& func)
+    int SetRPCFunc(std::string_view funcName, std::function<int(const std::string&, std::string&)> func)
     {
         if (m_rpcFunctionMapPtr->find(std::string(funcName)) != m_rpcFunctionMapPtr->end())
         {
@@ -71,7 +71,7 @@ public:
     }
 
     //在anymap中添加函数,any 为std::Function
-    int SetDllFunc(std::string_view funcName,std::any& func)
+    int SetDllFunc(std::string_view funcName,std::any func)
     {
         if (m_dllFunctionMapPtr->find(std::string(funcName)) != m_dllFunctionMapPtr->end())
         {
@@ -98,7 +98,7 @@ public:
         }
     }
     //添加消息
-    int AddMessage(std::string_view queueName,std::shared_ptr<MessageBase>&& messageBasePtr)
+    int AddMessage(std::string_view queueName,std::shared_ptr<MessageBase> messageBasePtr)
     {
         auto it =m_messageQueueMapPtr->find(std::string(queueName));
         if (it != m_messageQueueMapPtr->end())
@@ -113,7 +113,7 @@ public:
         return 0;
     }
     //设置处理函数
-    int SetAsyncFunc(std::string_view MessageType, int Number, std::string_view Name, std::function<void(std::shared_ptr<MessageBase>)>&& Func)
+    int SetAsyncFunc(std::string_view MessageType, int Number, std::string_view Name, std::function<void(std::shared_ptr<MessageBase>)> Func)
     {
         MessageTask new1(std::string(Name), Func);
 
