@@ -1,7 +1,11 @@
 #include <future>
 #include <iostream>
-
+#include <boost/asio.hpp>
+#include <boost/date_time/posix_time/posix_time.hpp>
+#include <boost/asio/io_service.hpp>
+#include <boost/bind/bind.hpp>
 #include <fstream>
+
 #include <queue>
 #include <mutex>
 #include <map>
@@ -19,8 +23,55 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+//timer count
+uint64_t count;
+boost::asio::io_context timer_ioc;
+//timer
+boost::asio::deadline_timer timer(boost::asio::deadline_timer(timer_ioc, boost::posix_time::microsec(1000)));
 
+std::shared_ptr<ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>> timerFuncMapPtr;
 
+void timeout()
+{
+    timer.expires_at(timer.expires_at() + boost::posix_time::microsec(1000));
+    for (ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>::iterator it = timerFuncMapPtr->begin(); it != timerFuncMapPtr->end(); it++)
+    {
+        if (count % it->first == 0)
+        {
+            for (std::map<std::string, std::shared_ptr<std::function<void()>>>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++)
+            {
+                std::future<void> futureResult = std::async(std::launch::async, *it1->second);
+                std::future_status status = futureResult.wait_for(std::chrono::nanoseconds(it->first * 1000));
+                switch (status)
+                {
+                case std::future_status::deferred:
+                    break;
+                case std::future_status::timeout:
+                    break;
+                case std::future_status::ready:
+                    break;
+                }
+            }
+
+        }
+
+    }
+    count++;
+    timer.async_wait(boost::bind(&timeout));
+}
+
+void timer_run()
+{
+    try
+    {
+        timer.async_wait(boost::bind(&timeout));
+        timer_ioc.run();
+
+    }
+    catch (std::exception& e)
+    {
+    }
+}
 
 int main()
 {
@@ -50,9 +101,9 @@ int main()
     std::shared_ptr<TaskScheduler> taskScheduler = std::make_shared<TaskScheduler>(loggerPtr);
 
     //设置定时函数，第一个值为毫秒数
-    std::shared_ptr<std::function<int(UINT64 num,std::string_view name,  std::function<void()>&&)>> 
+    std::shared_ptr<std::function<int(UINT64 num,std::string_view name,  std::function<void()>)>> 
         setTimerFuncPtr=
-        std::make_shared<std::function<int(UINT64 num,std::string_view name,  std::function<void()>&&)>>
+        std::make_shared<std::function<int(UINT64 num,std::string_view name,  std::function<void()>)>>
         (std::bind(&TaskScheduler::SetTimerFunc,taskScheduler,std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
     //获得定时函数map
         //设置定时函数，第一个值为毫秒数
@@ -62,9 +113,9 @@ int main()
         (std::bind(&TaskScheduler::GetTimerFunc, taskScheduler, std::placeholders::_1));
 
     //添加rpc函数
-    std::shared_ptr<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&&)>>
+    std::shared_ptr<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>)>>
         setRPCFuncPtr=
-        std::make_shared<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&&)>>
+        std::make_shared<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>)>>
         (std::bind(&TaskScheduler::SetRPCFunc, taskScheduler, std::placeholders::_1, std::placeholders::_2));
     //获得rpc函数
     std::shared_ptr<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&)>>
@@ -72,9 +123,9 @@ int main()
         std::make_shared<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&)>>
         (std::bind(&TaskScheduler::GetRPCFunc, taskScheduler, std::placeholders::_1, std::placeholders::_2));
     //添加dll函数,any为std::shared_ptr<std::Function>
-    std::shared_ptr<std::function<int(std::string_view funcName, std::any&)>>  
+    std::shared_ptr<std::function<int(std::string_view funcName, std::any)>>  
         setDllFuncPtr=
-        std::make_shared<std::function<int(std::string_view funcName, std::any&)>>
+        std::make_shared<std::function<int(std::string_view funcName, std::any)>>
         (std::bind(&TaskScheduler::SetDllFunc, taskScheduler, std::placeholders::_1, std::placeholders::_2));
     //获得dll函数
     std::shared_ptr<std::function<int(std::string_view funcName, std::any&)>>  
@@ -87,9 +138,9 @@ int main()
         std::make_shared<std::function<int(std::string_view queueName, std::shared_ptr<MessageBase>)>>
         (std::bind(&TaskScheduler::AddMessage, taskScheduler, std::placeholders::_1, std::placeholders::_2));
     //添加消息处理函数
-    std::shared_ptr<std::function<int(std::string_view, int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>&&)>>  
+    std::shared_ptr<std::function<int(std::string_view, int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>)>>  
         pushCallbackFuncPtr=
-        std::make_shared<std::function<int(std::string_view,int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>&&)>>
+        std::make_shared<std::function<int(std::string_view,int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>)>>
         (std::bind(&TaskScheduler::SetAsyncFunc, taskScheduler, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
 
     spdlog::flush_every(std::chrono::seconds(5)); // 定期刷新日志缓冲区
@@ -112,6 +163,38 @@ int main()
     std::vector<std::shared_ptr<AgentBase>> agentPtrVector;
 
     std::shared_ptr<DllFuncLoader> dllFuncLoaderPtr= std::make_shared<DllFuncLoader>();
+
+    std::map<std::string, std::shared_ptr<ButtonRPC>> RPCServerMap;
+    std::map<std::string, std::shared_ptr<ButtonRPC>> RPCClientMap;
+
+    for (rapidxml::xml_node<>* book = root->first_node("RPCServer"); book; book = book->next_sibling("RPCServer"))
+    {
+        for (rapidxml::xml_node<>* addr_node = book->first_node("addr"); addr_node; addr_node = addr_node->next_sibling("addr"))
+        {
+            if (addr_node)
+            {
+                std::string addr_ = addr_node->value();
+                std::string ip = addr_.substr(0, addr_.find(':'));
+                int port = std::atoi(addr_.substr(addr_.find(':') + 1, addr_.size() - 1).c_str());
+                RPCServerMap[addr_] = std::make_shared<ButtonRPC>();
+                RPCServerMap[addr_]->as_server(ip, port);
+            }
+        }
+    }
+    for (rapidxml::xml_node<>* book = root->first_node("RPCClient"); book; book = book->next_sibling("RPCClient"))
+    {
+        for (rapidxml::xml_node<>* addr_node = book->first_node("addr"); addr_node; addr_node = addr_node->next_sibling("addr"))
+        {
+            if (addr_node)
+            {
+                std::string addr_ = addr_node->value();
+                std::string ip = addr_.substr(0, addr_.find(':'));
+                int port = std::atoi(addr_.substr(addr_.find(':') + 1, addr_.size() - 1).c_str());
+                RPCServerMap[addr_] = std::make_shared<ButtonRPC>();
+                RPCServerMap[addr_]->as_client(ip, port);
+            }
+        }
+    }
     // 遍历子元素
     for (rapidxml::xml_node<>* book = root->first_node("Agent"); book; book = book->next_sibling("Agent")) 
     {
@@ -150,34 +233,47 @@ int main()
             //获得定时函数
             //设置定时函数，第一个值为毫秒数
             agentPtr->m_getTimerFunc = *getTimerFuncPtr;
-            //添加rpc函数
+            //添加rpc函数,any为std::shared_ptr<std::Function>
             agentPtr->m_setRPCFunc= *setRPCFuncPtr;
             //获得rpc函数
             agentPtr->m_getRPCFunc= *getRPCFuncPtr;
-            //添加dll函数,any为std::Function
+            //添加dll函数,any为std::shared_ptr<std::Function>
             agentPtr->m_setDllFunc= *setDllFuncPtr;
             //获得dll函数
             agentPtr->m_getDllFunc= *getDllFuncPtr;
             ////添加消息
             agentPtr->m_pushMessageFunc= *pushMessagePtr;
             ////添加消息处理函数
-            agentPtr->m_pushCallbackFunc = *pushCallbackFunc;
+            agentPtr->m_pushCallbackFunc = *pushCallbackFuncPtr;
             agentPtr->m_loggerPtr = loggerPtr;
             agentPtr->m_agentName = agentName;
-
+            for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it_Client = RPCClientMap.begin(); it_Client != RPCClientMap.end(); it_Client++)
+            {
+                agentPtr->m_RPCClientMap[it_Client->first] = it_Client->second;
+            }
+            for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it_Server = RPCServerMap.begin(); it_Server != RPCServerMap.end(); it_Server++)
+            {
+                agentPtr->m_RPCServerMap[it_Server->first] = it_Server->second;
+            }
             agentPtr->initialize();
 
         }
 
     }
-
+    (*getTimerFuncPtr)(timerFuncMapPtr);
     std::vector<std::future<void>> runFuncVector;
+    for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it = RPCServerMap.begin(); it != RPCServerMap.end(); it++)
+    {
+        runFuncVector.push_back(std::async(std::launch::async, std::bind(&ButtonRPC::run, it->second)));
+    }
+
     for (std::vector<std::shared_ptr<AgentBase>>::iterator it = agentPtrVector.begin(); it != agentPtrVector.end(); it++)
     {
         std::function<void()> runFunc=std::bind(&AgentBase::run,*it);
         runFuncVector.push_back(std::async(std::launch::async, runFunc));
 
     }
+    runFuncVector.push_back(std::async(std::launch::async, std::bind(&timer_run)));
     for (std::vector<std::future<void>>::iterator it = runFuncVector.begin(); it != runFuncVector.end(); it++)
     {
         it->get();
