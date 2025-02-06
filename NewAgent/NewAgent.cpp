@@ -1,6 +1,7 @@
-﻿#include <iostream>
+#include <iostream>
 #include <string>
 #include <AgentBase.hpp>
+#include <typeinfo>
 class NewAgent : public AgentBase
 {
 
@@ -16,8 +17,8 @@ public:
 	virtual void run();
 	void timeout1();
 	void timeout5();
-	std::function<bool(const std::string&&, std::any&)> publishFunc;
-	std::function<bool(const std::string&&, std::any&)> subscribeFunc;
+	std::function<bool(std::string_view, Serializer&)> publishFunc;
+	std::function<bool(std::string_view, Serializer&)> subscribeFunc;
 
 private:
 };
@@ -43,8 +44,8 @@ void NewAgent::initialize()
 	m_getDllFunc("subscribe", subscribeFuncAny);
 	try
 	{
-		publishFunc = std::any_cast<std::function<bool(const std::string&&, std::any&)>>(publishFuncAny);
-		subscribeFunc = std::any_cast<std::function<bool(const std::string&&, std::any&)>>(subscribeFuncAny);
+		publishFunc = std::any_cast<std::function<bool(std::string_view, Serializer&)>>(publishFuncAny);
+		subscribeFunc = std::any_cast<std::function<bool(std::string_view, Serializer&)>>(subscribeFuncAny);
 
 	}
 	catch (const std::exception& e)
@@ -58,21 +59,16 @@ void NewAgent::run()
 {
 
 	std::string topic1 = "topic1";
-	std::string topic2 = "topic2";
-	try
-	{
-		std::any value1 = std::make_any<std::string>(std::string("11111"));
-		std::any value2 = std::make_any<int>(7848);
-		publishFunc(std::move(topic1), value1);
-		publishFunc("topic2", value2);
-	}	
-	catch (const std::exception&e)
-	{
-		spdlog::error("any cast fail2{}", e.what());
-		return;
-	}
+	std::string topic2 = "topic2";		
+	Serializer value1;
+	value1 << typeid(std::string("11111")).name();
+	value1 << std::string("11111");
 
-
+	Serializer value2;
+	value2 << typeid(1).name();
+	value2 << 1;
+	publishFunc(std::move(topic1), value1);
+	publishFunc("topic2", value2);
 
 	std::function<void()> func1 =std::function<void()>(std::bind(&NewAgent::timeout1, this));
 	std::string funcname1("func1");
@@ -81,8 +77,8 @@ void NewAgent::run()
 	std::string funcname5("func5");
 	try
 	{
-		m_setTimerFunc(UINT64(1), "func1",func1);
-		m_setTimerFunc(UINT64(5), std::move(funcname5), func5);
+		m_setTimerFunc(UINT64(1), "func1",std::move(func1));
+		m_setTimerFunc(UINT64(5), funcname5, std::move(func5));
 		spdlog::info("{} run", this->m_agentName);
 
 	}
