@@ -31,6 +31,13 @@ boost::asio::deadline_timer timer(boost::asio::deadline_timer(timer_ioc, boost::
 
 std::shared_ptr<ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>> timerFuncMapPtr;
 
+std::shared_ptr <boost::interprocess::managed_shared_memory> m_segmentPtr;
+std::shared_ptr <CharAllocator> m_charallocPtr;
+std::shared_ptr <StringAllocator> m_strallocPtr;
+std::shared_ptr <MapAllocator> m_mapallocPtr;
+ShmemMap* m_mapPtr;
+std::shared_ptr<boost::interprocess::named_recursive_mutex > m_namedMtx;
+
 void timeout()
 {
     timer.expires_at(timer.expires_at() + boost::posix_time::microsec(1000));
@@ -73,6 +80,44 @@ void timer_run()
     }
 }
 
+void publish_net(Serializer* out, const char* sePtr, int size)
+{
+    Serializer Se(sePtr,size);
+    std::string name_;
+    Se >> name_;
+    ShmemString nameSS(name_.data(), *m_charallocPtr);
+    ShmemString dataSS(Se.data(), Se.size(), *m_charallocPtr);
+    MapKVType pair_(nameSS, dataSS);
+
+    m_namedMtx->lock();
+    m_mapPtr->insert_or_assign(nameSS, dataSS);
+    m_namedMtx->unlock();
+
+    (*out) << 0;
+    return;
+}
+
+void subscribe_net(Serializer* out,const char* sePtr, int size)
+{
+    Serializer nameSe(sePtr, size);
+    std::string nameStr;
+    nameSe >> nameStr;
+    ShmemString dataSS(*m_charallocPtr);
+    ShmemString nameSS(nameStr.data(), *m_charallocPtr);
+
+    if (m_mapPtr->find(nameSS) == m_mapPtr->end())
+    {
+        return;
+    }
+    {
+        m_namedMtx->lock();
+        dataSS = m_mapPtr->at(nameSS);
+        m_namedMtx->unlock();
+    }
+    out->input(dataSS.data(), dataSS.size());
+    return;
+}
+
 int main()
 {
     std::shared_ptr<spdlog::details::thread_pool> tp = std::make_shared<spdlog::details::thread_pool>(1,1);
@@ -98,6 +143,13 @@ int main()
     spdlog::info("VOLKNET online.");
     spdlog::info("Establishing battlefield control, standby.");
     spdlog::info("battlefield control online.");    
+    m_segmentPtr = std::make_shared<boost::interprocess::managed_shared_memory>(boost::interprocess::open_or_create, "-1", 65536);
+    m_charallocPtr = std::make_shared<CharAllocator>(m_segmentPtr->get_segment_manager());
+    m_strallocPtr = std::make_shared<StringAllocator>(m_segmentPtr->get_segment_manager());
+    m_mapallocPtr = std::make_shared<MapAllocator>(m_segmentPtr->get_segment_manager());
+    m_mapPtr = m_segmentPtr->find_or_construct<ShmemMap>("map")(*m_mapallocPtr);
+
+    m_namedMtx = std::make_shared<boost::interprocess::named_recursive_mutex>(boost::interprocess::open_or_create, "map");
     std::shared_ptr<TaskScheduler> taskScheduler = std::make_shared<TaskScheduler>(loggerPtr);
 
     //设置定时函数，第一个值为毫秒数
@@ -176,8 +228,20 @@ int main()
                 std::string addr_ = addr_node->value();
                 std::string ip = addr_.substr(0, addr_.find(':'));
                 int port = std::atoi(addr_.substr(addr_.find(':') + 1, addr_.size() - 1).c_str());
-                RPCServerMap[addr_] = std::make_shared<ButtonRPC>();
-                RPCServerMap[addr_]->as_server(ip, port);
+                if (ip=="shm")
+                {
+                    RPCServerMap["shm"] = std::make_shared<ButtonRPC>();
+                    RPCServerMap["shm"]->as_server(ip, port);
+
+                }
+                else
+                {
+                    RPCServerMap["net"] = std::make_shared<ButtonRPC>();
+                    RPCServerMap["net"]->as_server(ip, port);                    
+                    RPCServerMap["net"]->regist_se("subscribe_net", &subscribe_net);
+                    RPCServerMap["net"]->regist_se("publish_net", &publish_net);
+                }
+
             }
         }
     }
@@ -255,6 +319,11 @@ int main()
             {
                 agentPtr->m_RPCServerMap[it_Server->first] = it_Server->second;
             }
+            agentPtr->m_segmentPtr = m_segmentPtr;
+            agentPtr->m_charallocPtr = m_charallocPtr;
+            agentPtr->m_strallocPtr = m_strallocPtr;
+            agentPtr->m_mapallocPtr = m_mapallocPtr;
+            agentPtr->m_mapPtr = m_mapPtr;
             agentPtr->initialize();
 
         }
