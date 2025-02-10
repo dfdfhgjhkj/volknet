@@ -36,7 +36,7 @@ std::shared_ptr <CharAllocator> m_charallocPtr;
 std::shared_ptr <StringAllocator> m_strallocPtr;
 std::shared_ptr <MapAllocator> m_mapallocPtr;
 ShmemMap* m_mapPtr;
-std::shared_ptr<boost::interprocess::named_recursive_mutex > m_namedMtx;
+std::shared_ptr<boost::interprocess::named_recursive_mutex > m_namedMtxPtr;
 
 void timeout()
 {
@@ -89,9 +89,9 @@ void publish_net(Serializer* out, const char* sePtr, int size)
     ShmemString dataSS(Se.data(), Se.size(), *m_charallocPtr);
     MapKVType pair_(nameSS, dataSS);
 
-    m_namedMtx->lock();
+    m_namedMtxPtr->lock();
     m_mapPtr->insert_or_assign(nameSS, dataSS);
-    m_namedMtx->unlock();
+    m_namedMtxPtr->unlock();
 
     (*out) << 0;
     return;
@@ -110,10 +110,11 @@ void subscribe_net(Serializer* out,const char* sePtr, int size)
         return;
     }
     {
-        m_namedMtx->lock();
+        m_namedMtxPtr->lock();
         dataSS = m_mapPtr->at(nameSS);
-        m_namedMtx->unlock();
+        m_namedMtxPtr->unlock();
     }
+    (*out)<<dataSS.size();
     out->input(dataSS.data(), dataSS.size());
     return;
 }
@@ -149,7 +150,7 @@ int main()
     m_mapallocPtr = std::make_shared<MapAllocator>(m_segmentPtr->get_segment_manager());
     m_mapPtr = m_segmentPtr->find_or_construct<ShmemMap>("map")(*m_mapallocPtr);
 
-    m_namedMtx = std::make_shared<boost::interprocess::named_recursive_mutex>(boost::interprocess::open_or_create, "map");
+    m_namedMtxPtr = std::make_shared<boost::interprocess::named_recursive_mutex>(boost::interprocess::open_or_create, "map");
     std::shared_ptr<TaskScheduler> taskScheduler = std::make_shared<TaskScheduler>(loggerPtr);
 
     //设置定时函数，第一个值为毫秒数
@@ -221,8 +222,8 @@ int main()
 
     std::shared_ptr<ThreadSafeMap<size_t, std::string>> typenameMapPtr=std::make_shared<ThreadSafeMap<size_t, std::string>>();
 
-    std::shared_ptr<ThreadSafeMap<size_t, std::pair<std::shared_ptr<std::function<std::string(Serializer)>>, std::shared_ptr<std::function<Serializer(std::string)>>>>> typeToStrFuncMapPtr=
-        std::make_shared<ThreadSafeMap<size_t, std::pair<std::shared_ptr<std::function<std::string(Serializer)>>, std::shared_ptr<std::function<Serializer(std::string)>>>>>();
+    std::shared_ptr<ThreadSafeMap<size_t, std::pair<std::function<std::string(Serializer)>, std::function<Serializer(std::string)>>>> typeToStrFuncMapPtr=
+        std::make_shared<ThreadSafeMap<size_t, std::pair<std::function<std::string(Serializer)>, std::function<Serializer(std::string)>>>>();
     for (rapidxml::xml_node<>* book = root->first_node("RPCServer"); book; book = book->next_sibling("RPCServer"))
     {
         for (rapidxml::xml_node<>* addr_node = book->first_node("addr"); addr_node; addr_node = addr_node->next_sibling("addr"))
@@ -330,6 +331,7 @@ int main()
             agentPtr->m_strallocPtr = m_strallocPtr;
             agentPtr->m_mapallocPtr = m_mapallocPtr;
             agentPtr->m_mapPtr = m_mapPtr;
+            agentPtr->m_namedMtxPtr = m_namedMtxPtr;
             agentPtr->initialize();
 
         }
