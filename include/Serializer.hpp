@@ -182,7 +182,12 @@ inline void Serializer::input_type(std::string v)
     byteOrder(const_cast<char*>(v.c_str()), len);
     input(v.c_str(), len);
 }
-
+template <>
+inline void Serializer::input_type(Serializer v)
+{
+    byteOrder(const_cast<char*>(v.data()), v.size());
+    input(v.data(), v.size());
+}
 template <>
 inline void Serializer::input_type(const char* v)
 {
@@ -249,6 +254,13 @@ inline void Serializer::output_type(std::string& v)
     v = std::string(data(), strLen);
     buffer_->offset(strLen);
     byteOrder(const_cast<char*>(v.c_str()), strLen);
+}
+
+template <>
+inline void Serializer::output_type(Serializer& v)
+{
+    byteOrder(const_cast<char*>(v.data()), v.size());
+    v.input(v.data(), v.size());
 }
 
 #endif
