@@ -76,6 +76,9 @@ public:
         ShmemMap* m_mapPtr;
         std::shared_ptr<boost::interprocess::named_recursive_mutex > m_namedMtx;
 
+        std::shared_ptr<ThreadSafeMap<size_t, std::string>> m_typenameMapPtr;
+
+        std::shared_ptr<ThreadSafeMap<size_t, std::pair<std::shared_ptr<std::function<std::string(Serializer)>>, std::shared_ptr<std::function<Serializer(std::string)>>>>> m_typeToStrFuncMapPtr;
         AgentBase();
         virtual ~AgentBase();
         //初始化
@@ -88,12 +91,26 @@ public:
 
         template <typename T>
         int publish(std::string_view name, const T& data);
-        void RegisterType_(const char* a, std::shared_ptr<std::function<std::string(Serializer)>> toStrFuncPtr, std::shared_ptr<std::function<Serializer(std::string)>> strToFuncPtr)
-        {
-            m_RPCServerMap["net"]->regist(std::string(a) + "ToStr", *toStrFuncPtr);
-            m_RPCServerMap["shm"]->regist(std::string(a) + "ToStr", *toStrFuncPtr);
-            m_RPCServerMap["net"]->regist(std::string(a) + "ToSe", *strToFuncPtr);
-            m_RPCServerMap["shm"]->regist(std::string(a) + "ToSe", *strToFuncPtr);
+
+        void RegisteType_(size_t a,const char* b, std::shared_ptr<std::function<std::string(Serializer)>> toStrFuncPtr, std::shared_ptr<std::function<Serializer(std::string)>> strToFuncPtr)
+        {            
+            if (m_typeToStrFuncMapPtr->find(a) != m_typeToStrFuncMapPtr->end())
+            {
+                spdlog::error("typename {} have been Registed", b);
+                return;
+            }
+            if (m_typenameMapPtr->find(a)!=m_typenameMapPtr->end())
+            {
+                spdlog::error("typename {} hash collisions with typename{}", b,(*m_typenameMapPtr)[a]); 
+                return;
+            }
+
+            m_typeToStrFuncMapPtr->insert(std::pair(a, std::make_pair(toStrFuncPtr, strToFuncPtr)));
+            m_typenameMapPtr->insert(std::pair(a, b));
+            m_RPCServerMap["net"]->regist(std::to_string(a) + "ToStr", *toStrFuncPtr);
+            m_RPCServerMap["shm"]->regist(std::to_string(a) + "ToStr", *toStrFuncPtr);
+            m_RPCServerMap["net"]->regist(std::to_string(a) + "ToSe", *strToFuncPtr);
+            m_RPCServerMap["shm"]->regist(std::to_string(a) + "ToSe", *strToFuncPtr);
         }
 
      private:
@@ -111,6 +128,10 @@ AgentBase::~AgentBase()
 template <typename T>
 int AgentBase::subscribe(std::string_view name, T& data)
 {
+    if (m_typenameMapPtr->find(typeid(T).hash_code()) == m_typenameMapPtr->end())
+    {
+        spdlog::error("typename {} have not been Registed.", typeid(T).name());
+    }
     Serializer dataSe;
     ShmemString nameSS(name, *m_charallocPtr);
     if (m_mapPtr->find(nameSS)==m_mapPtr->end())
@@ -140,10 +161,10 @@ int AgentBase::subscribe(std::string_view name, T& data)
         m_namedMtx->lock();
         dataSS = m_mapPtr->at(nameSS);
         m_namedMtx->unlock();
-        std::string typename_;
+        size_t typename_;
         dataSe.input(dataSS.data(), dataSS.size());
         dataSe >> typename_;
-        if (typename_ != typeid(T).name())
+        if (typename_ != typeid(T).hash_code())
         {
             return 1;
         }
@@ -160,8 +181,14 @@ template <typename T>
 int AgentBase::publish(std::string_view name, const T& data)
 {
 
+
+    if (m_typenameMapPtr->find(typeid(T).hash_code()) == m_typenameMapPtr->end())
+    {
+        spdlog::error("typename {} have not been Registed.", typeid(T).name()); 
+    }
+    
     Serializer dataSe;
-    dataSe << typeid(T).name();
+    dataSe << typeid(T).hash_code();
     dataSe << data;
     ShmemString nameSS(name, *m_charallocPtr);
     ShmemString dataSS(dataSe.data(), dataSe.size(), *m_charallocPtr);
@@ -191,8 +218,9 @@ void AgentBase::run()
 }
 #define GetAgent(type) extern "C" {DLLEXPORT AgentBase* CreateAgent(){return (AgentBase*)(new type());}; DLLEXPORT void DeleteAgent(AgentBase* oldAgent){if(oldAgent){delete oldAgent;}return;};}
 
-#define RegisterType(type) \
-RegisterType_(\
+#define RegisteType(type) \
+RegisteType_(\
+typeid(type).hash_code(),\
 typeid(type).name(),\
 std::make_shared<std::function<std::string(Serializer)>>(\
     [&](Serializer anyData)\
@@ -200,7 +228,7 @@ std::make_shared<std::function<std::string(Serializer)>>(\
         try\
         {\
             type typeData;\
-            std::string typename_;\
+            size typename_;\
             anyData>>typename_;\
             anyData>>typeData;\
             return nlohmann::json(typeData).dump();\
@@ -218,6 +246,7 @@ std::make_shared<std::function<Serializer(std::string)>>(\
         try\
         {\
             Serializer se; \
+            se<<typeid(type).hash_code();\
             se << (nlohmann::json::parse(str).get<type>()); \
             return se; \
         }\
