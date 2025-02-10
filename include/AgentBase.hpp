@@ -12,7 +12,7 @@
 #include <ThreadSafeMap.hpp>
 #include <nlohmann/json.hpp>
 #include <ButtonRPC.hpp>
-
+#include <chrono>
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/containers/vector.hpp>
 #include <boost/interprocess/containers/string.hpp>
@@ -74,11 +74,11 @@ public:
         std::shared_ptr <StringAllocator> m_strallocPtr;
         std::shared_ptr <MapAllocator> m_mapallocPtr;
         ShmemMap* m_mapPtr;
-        std::shared_ptr<boost::interprocess::named_recursive_mutex > m_namedMtx;
+        std::shared_ptr<boost::interprocess::named_recursive_mutex > m_namedMtxPtr;
 
         std::shared_ptr<ThreadSafeMap<size_t, std::string>> m_typenameMapPtr;
 
-        std::shared_ptr<ThreadSafeMap<size_t, std::pair<std::shared_ptr<std::function<std::string(Serializer)>>, std::shared_ptr<std::function<Serializer(std::string)>>>>> m_typeToStrFuncMapPtr;
+        std::shared_ptr<ThreadSafeMap<size_t, std::pair<std::function<std::string(Serializer)>, std::function<Serializer(std::string)>>>> m_typeToStrFuncMapPtr;
         AgentBase();
         virtual ~AgentBase();
         //初始化
@@ -87,12 +87,12 @@ public:
         virtual void run();
 
         template <typename T>
-        int subscribe(std::string_view name, T& data);
+        std::time_t subscribe(std::string_view name, T& data);
 
         template <typename T>
-        int publish(std::string_view name, const T& data);
+        std::time_t publish(std::string_view name, const T& data);
 
-        void RegisteType_(size_t a,const char* b, std::shared_ptr<std::function<std::string(Serializer)>> toStrFuncPtr, std::shared_ptr<std::function<Serializer(std::string)>> strToFuncPtr)
+        void RegisteType_(size_t a,const char* b, std::function<std::string(Serializer)>&& toStrFunc, std::function<Serializer(std::string)>&& strToFunc)
         {            
             if (m_typeToStrFuncMapPtr->find(a) != m_typeToStrFuncMapPtr->end())
             {
@@ -105,12 +105,12 @@ public:
                 return;
             }
 
-            m_typeToStrFuncMapPtr->insert(std::pair(a, std::make_pair(toStrFuncPtr, strToFuncPtr)));
+            m_typeToStrFuncMapPtr->insert(std::pair(a, std::make_pair(toStrFunc, strToFunc)));
             m_typenameMapPtr->insert(std::pair(a, b));
-            m_RPCServerMap["net"]->regist(std::to_string(a) + "ToStr", *toStrFuncPtr);
-            m_RPCServerMap["shm"]->regist(std::to_string(a) + "ToStr", *toStrFuncPtr);
-            m_RPCServerMap["net"]->regist(std::to_string(a) + "ToSe", *strToFuncPtr);
-            m_RPCServerMap["shm"]->regist(std::to_string(a) + "ToSe", *strToFuncPtr);
+            m_RPCServerMap["net"]->regist(std::to_string(a) + "ToStr", toStrFunc);
+            m_RPCServerMap["shm"]->regist(std::to_string(a) + "ToStr", toStrFunc);
+            m_RPCServerMap["net"]->regist(std::to_string(a) + "ToSe", strToFunc);
+            m_RPCServerMap["shm"]->regist(std::to_string(a) + "ToSe", strToFunc);
         }
 
      private:
@@ -126,8 +126,10 @@ AgentBase::~AgentBase()
 
 }
 template <typename T>
-int AgentBase::subscribe(std::string_view name, T& data)
+std::time_t AgentBase::subscribe(std::string_view name, T& data)
 {
+    std::time_t pubTime;
+    size_t typename_;
     if (m_typenameMapPtr->find(typeid(T).hash_code()) == m_typenameMapPtr->end())
     {
         spdlog::error("typename {} have not been Registed.", typeid(T).name());
@@ -142,12 +144,19 @@ int AgentBase::subscribe(std::string_view name, T& data)
             std::string ip = it->first.substr(0, it->first.find(':'));
             if (ip != "shm")
             {        
-                Serializer res;
-                res=it->second->call("subscribe_net", dataSe);
-                if (res.size()!=0)
-                {
-                    res >> data;
-                    return 0;
+                
+                dataSe =it->second->call<Serializer>("subscribe_net", std::string(name)).value();
+                if (dataSe.size()!=0)
+                {                    
+                    dataSe >> typename_;
+                    if (typename_ != typeid(T).hash_code())
+                    {
+                        return 0;
+                    }
+
+                    dataSe >> data;
+                    dataSe >> pubTime;
+                    return pubTime;
                 }
             }
 
@@ -158,18 +167,19 @@ int AgentBase::subscribe(std::string_view name, T& data)
 
     {    
         ShmemString dataSS(*m_charallocPtr);
-        m_namedMtx->lock();
+        m_namedMtxPtr->lock();
         dataSS = m_mapPtr->at(nameSS);
-        m_namedMtx->unlock();
-        size_t typename_;
+        m_namedMtxPtr->unlock();
+
         dataSe.input(dataSS.data(), dataSS.size());
         dataSe >> typename_;
         if (typename_ != typeid(T).hash_code())
         {
-            return 1;
+            return 0;
         }
         dataSe >> data;
-        return 0;
+        dataSe >> pubTime;
+        return pubTime;
     }
 
 }
@@ -178,7 +188,7 @@ int AgentBase::subscribe(std::string_view name, T& data)
 
 
 template <typename T>
-int AgentBase::publish(std::string_view name, const T& data)
+std::time_t AgentBase::publish(std::string_view name, const T& data)
 {
 
 
@@ -186,28 +196,30 @@ int AgentBase::publish(std::string_view name, const T& data)
     {
         spdlog::error("typename {} have not been Registed.", typeid(T).name()); 
     }
-    
+    std::time_t pubTime= std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     Serializer dataSe;
     dataSe << typeid(T).hash_code();
     dataSe << data;
+
+    dataSe << pubTime;
     ShmemString nameSS(name, *m_charallocPtr);
     ShmemString dataSS(dataSe.data(), dataSe.size(), *m_charallocPtr);
     MapKVType pair_(nameSS, dataSS);
 
-    m_namedMtx->lock();
+    m_namedMtxPtr->lock();
     m_mapPtr->insert_or_assign(nameSS, dataSS);
-    m_namedMtx->unlock();
+    m_namedMtxPtr->unlock();
 
     for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it = m_RPCClientMap.begin(); it != m_RPCClientMap.end(); it++)
     {
         std::string ip = it->first.substr(0, it->first.find(':'));
         if (ip!="shm")
         {
-            it->second->call("publish_net",dataSe);
+            it->second->call<Serializer>("publish_net",dataSe);
         }
 
     }
-    return 0;
+    return pubTime;
 }
 
 void AgentBase::initialize()
@@ -222,7 +234,7 @@ void AgentBase::run()
 RegisteType_(\
 typeid(type).hash_code(),\
 typeid(type).name(),\
-std::make_shared<std::function<std::string(Serializer)>>(\
+std::function<std::string(Serializer)>(\
     [&](Serializer anyData)\
     {\
         try\
@@ -230,8 +242,12 @@ std::make_shared<std::function<std::string(Serializer)>>(\
             type typeData;\
             size_t typename_;\
             anyData>>typename_;\
+            nlohmann::json json_(typeData);\
             anyData>>typeData;\
-            return nlohmann::json(typeData).dump();\
+            std::time_t pusTime;\
+            anyData>>pusTime;\
+            json_["pubTime"]=pusTime;\
+            return json_.dump();\
         }\
         catch (const std::exception& e)\
         {\
@@ -240,14 +256,18 @@ std::make_shared<std::function<std::string(Serializer)>>(\
         }\
     }\
 ),\
-std::make_shared<std::function<Serializer(std::string)>>(\
+std::function<Serializer(std::string)>(\
     [&](std::string str)\
     {\
         try\
         {\
             Serializer se; \
             se<<typeid(type).hash_code();\
+            nlohmann::json json_= nlohmann::json::parse(str);\
+            std::time_t pubTime=json_["pubTime"].get<std::time_t>();\
+            json_.erase("pubTime");\
             se << (nlohmann::json::parse(str).get<type>()); \
+            se<<pubTime;\
             return se; \
         }\
         catch (const std::exception& e)\
