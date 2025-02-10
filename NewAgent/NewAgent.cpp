@@ -17,8 +17,7 @@ public:
 	virtual void run();
 	void timeout1();
 	void timeout5();
-	std::function<bool(std::string_view, Serializer&)> publishFunc;
-	std::function<bool(std::string_view, Serializer&)> subscribeFunc;
+
 
 private:
 };
@@ -38,21 +37,7 @@ void NewAgent::initialize()
 	spdlog::set_default_logger(m_loggerPtr);
 	// 打印字符串
 	spdlog::info("{} initialize", this->m_agentName);
-	std::any publishFuncAny;
-	m_getDllFunc("publish", publishFuncAny);
-	std::any subscribeFuncAny;
-	m_getDllFunc("subscribe", subscribeFuncAny);
-	try
-	{
-		publishFunc = std::any_cast<std::function<bool(std::string_view, Serializer&)>>(publishFuncAny);
-		subscribeFunc = std::any_cast<std::function<bool(std::string_view, Serializer&)>>(subscribeFuncAny);
 
-	}
-	catch (const std::exception& e)
-	{
-		spdlog::error("any cast fail1{}", e.what());
-		return;
-	}
 
 }
 void NewAgent::run()
@@ -60,15 +45,11 @@ void NewAgent::run()
 
 	std::string topic1 = "topic1";
 	std::string topic2 = "topic2";		
-	Serializer value1;
-	value1 << typeid(std::string("11111")).name();
-	value1 << std::string("11111");
-
-	Serializer value2;
-	value2 << typeid(1).name();
-	value2 << 1;
-	publishFunc(std::move(topic1), value1);
-	publishFunc("topic2", value2);
+	publish<std::string>(topic1, std::string("11111"));
+	publish<int>("topic2", 1);
+	int aa = 2;
+	subscribe<int>("topic2", aa);
+	spdlog::info("{} subscribe", aa);
 
 	std::function<void()> func1 =std::function<void()>(std::bind(&NewAgent::timeout1, this));
 	std::string funcname1("func1");
