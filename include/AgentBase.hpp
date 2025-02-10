@@ -228,7 +228,7 @@ std::make_shared<std::function<std::string(Serializer)>>(\
         try\
         {\
             type typeData;\
-            size typename_;\
+            size_t typename_;\
             anyData>>typename_;\
             anyData>>typeData;\
             return nlohmann::json(typeData).dump();\
