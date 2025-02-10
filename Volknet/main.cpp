@@ -80,43 +80,42 @@ void timer_run()
     }
 }
 
-void publish_net(Serializer* out, const char* sePtr, int size)
+Serializer publish_net(Serializer in)
 {
-    Serializer Se(sePtr,size);
+    Serializer out;
     std::string name_;
-    Se >> name_;
+    in >> name_;
     ShmemString nameSS(name_.data(), *m_charallocPtr);
-    ShmemString dataSS(Se.data(), Se.size(), *m_charallocPtr);
+    ShmemString dataSS(in.data(), in.size(), *m_charallocPtr);
     MapKVType pair_(nameSS, dataSS);
 
     m_namedMtxPtr->lock();
     m_mapPtr->insert_or_assign(nameSS, dataSS);
     m_namedMtxPtr->unlock();
 
-    (*out) << 0;
-    return;
+    out << 0;
+    return out;
 }
 
-void subscribe_net(Serializer* out,const char* sePtr, int size)
+Serializer subscribe_net(Serializer in)
 {
-    Serializer nameSe(sePtr, size);
+
     std::string nameStr;
-    nameSe >> nameStr;
+    in >> nameStr;
     ShmemString dataSS(*m_charallocPtr);
     ShmemString nameSS(nameStr.data(), *m_charallocPtr);
 
     if (m_mapPtr->find(nameSS) == m_mapPtr->end())
     {
-        return;
+        return Serializer();
     }
     {
         m_namedMtxPtr->lock();
         dataSS = m_mapPtr->at(nameSS);
         m_namedMtxPtr->unlock();
     }
-    (*out)<<dataSS.size();
-    out->input(dataSS.data(), dataSS.size());
-    return;
+    Serializer out(dataSS.data(), dataSS.size());
+    return out;
 }
 
 int main()
@@ -243,8 +242,8 @@ int main()
                 {
                     RPCServerMap["net"] = std::make_shared<ButtonRPC>();
                     RPCServerMap["net"]->as_server(ip, port);                    
-                    RPCServerMap["net"]->regist_se("subscribe_net", &subscribe_net);
-                    RPCServerMap["net"]->regist_se("publish_net", &publish_net);
+                    RPCServerMap["net"]->regist("subscribe_net", &subscribe_net);
+                    RPCServerMap["net"]->regist("publish_net", &publish_net);
                 }
 
             }
