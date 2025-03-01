@@ -1,5 +1,7 @@
 #ifndef AGENTBASE_HPP
 #define AGENTBASE_HPP
+
+#include <mutex>
 #include <iostream>
 #include <map>
 #include <any>
@@ -22,6 +24,7 @@
 #ifdef _MSC_VER
 #define DLLEXPORT __declspec(dllexport)
 #endif
+#include <shared_mutex>
 #ifndef _MSC_VER
 #define DLLEXPORT 
 #endif
@@ -47,38 +50,36 @@ class AgentBase
 
 public:    
         //设置定时函数，第一个值为毫秒数
-        std::function<int(UINT64,std::string_view name,  std::function<void()>)> m_setTimerFunc;
-        //查看修改定时函数
-        std::function<int(std::shared_ptr<ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>>&)> m_getTimerFunc;
+        std::function<int(UINT64,std::string_view name,  std::function<void()>)> m_addTimerFunc;
+        //查看修改定时函数时间间隔
+        std::function<int(UINT64 num, std::string_view name)> m_alterTimer;
         //添加rpc函数
         std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>)>  m_setRPCFunc;
         //获得rpc函数
         std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&)>  m_getRPCFunc;
-        //添加dll函数,any为std::shared_ptr<std::Function>
+        //添加dll函数
         std::function<int(std::string_view funcName, std::any)>  m_setDllFunc;
         //获得dll函数
         std::function<int(std::string_view funcName, std::any&)>  m_getDllFunc;
         //添加消息
-        std::function<int(std::string_view queueName, std::shared_ptr<MessageBase> )> m_pushMessageFunc;
+        std::function<int(std::string_view queueName, std::shared_ptr<MessageBase> )> m_pushMessage;
         //添加消息处理函数
-        std::function<int(std::string_view, int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>)>  m_pushCallbackFunc;
+        std::function<int(std::string_view, int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>)>  m_pushCallBackFunc;
+        //注册类型
+        std::function<void(size_t a, const char* b, std::function<std::string(Serializer)>&& toStrFunc, std::function<Serializer(std::string)>&& strToFunc)> m_registeType;
+        //subscribe
+        std::function<void(std::string_view name, Serializer& dataSe)> m_subscribe;
+        //publish
+        std::function<void(std::string_view name, Serializer& dataSe)> m_publish;
         //logger
         std::shared_ptr<spdlog::logger> m_loggerPtr;
         //name
         std::string m_agentName;
         std::map<std::string, std::shared_ptr<ButtonRPC>> m_RPCServerMap;
         std::map<std::string, std::shared_ptr<ButtonRPC>> m_RPCClientMap;
-
-        std::shared_ptr <boost::interprocess::managed_shared_memory> m_segmentPtr;
-        std::shared_ptr <CharAllocator> m_charallocPtr;
-        std::shared_ptr <StringAllocator> m_strallocPtr;
-        std::shared_ptr <MapAllocator> m_mapallocPtr;
         ShmemMap* m_mapPtr;
-        std::shared_ptr<boost::interprocess::named_recursive_mutex > m_namedMtxPtr;
-
         std::shared_ptr<ThreadSafeMap<size_t, std::string>> m_typenameMapPtr;
 
-        std::shared_ptr<ThreadSafeMap<size_t, std::pair<std::function<std::string(Serializer)>, std::function<Serializer(std::string)>>>> m_typeToStrFuncMapPtr;
         AgentBase();
         virtual ~AgentBase();
         //初始化
@@ -92,28 +93,8 @@ public:
         template <typename T>
         std::time_t publish(std::string_view name, const T& data);
 
-        void RegisteType_(size_t a,const char* b, std::function<std::string(Serializer)>&& toStrFunc, std::function<Serializer(std::string)>&& strToFunc)
-        {            
-            if (m_typeToStrFuncMapPtr->find(a) != m_typeToStrFuncMapPtr->end())
-            {
-                spdlog::error("typename {} have been Registed", b);
-                return;
-            }
-            if (m_typenameMapPtr->find(a)!=m_typenameMapPtr->end())
-            {
-                spdlog::error("typename {} hash collisions with typename{}", b,(*m_typenameMapPtr)[a]); 
-                return;
-            }
-
-            m_typeToStrFuncMapPtr->insert(std::pair(a, std::make_pair(toStrFunc, strToFunc)));
-            m_typenameMapPtr->insert(std::pair(a, b));
-            m_RPCServerMap["net"]->regist(std::to_string(a) + "ToStr", toStrFunc);
-            m_RPCServerMap["shm"]->regist(std::to_string(a) + "ToStr", toStrFunc);
-            m_RPCServerMap["net"]->regist(std::to_string(a) + "ToSe", strToFunc);
-            m_RPCServerMap["shm"]->regist(std::to_string(a) + "ToSe", strToFunc);
-        }
-
      private:
+         std::shared_mutex m_mutex;
 };
 
 AgentBase::AgentBase()
@@ -133,45 +114,17 @@ std::time_t AgentBase::subscribe(std::string_view name, T& data)
     if (m_typenameMapPtr->find(typeid(T).hash_code()) == m_typenameMapPtr->end())
     {
         spdlog::error("typename {} have not been Registed.", typeid(T).name());
+        return 0;
     }
     Serializer dataSe;
-    ShmemString nameSS(name, *m_charallocPtr);
-    if (m_mapPtr->find(nameSS)==m_mapPtr->end())
-    {         
+    m_subscribe(name, dataSe);
 
-        for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it = m_RPCClientMap.begin(); it != m_RPCClientMap.end(); it++)
-        {
-            std::string ip = it->first.substr(0, it->first.find(':'));
-            if (ip != "shm")
-            {        
-                
-                dataSe =it->second->call<Serializer>("subscribe_net", std::string(name)).value();
-                if (dataSe.size()!=0)
-                {                    
-                    dataSe >> typename_;
-                    if (typename_ != typeid(T).hash_code())
-                    {
-                        return 0;
-                    }
-
-                    dataSe >> data;
-                    dataSe >> pubTime;
-                    return pubTime;
-                }
-            }
-
-        }
-        return 1;
+    if (dataSe.size()==0)
+    {
+        return 0;
     }
     else
-
-    {    
-        ShmemString dataSS(*m_charallocPtr);
-        m_namedMtxPtr->lock();
-        dataSS = m_mapPtr->at(nameSS);
-        m_namedMtxPtr->unlock();
-
-        dataSe.input(dataSS.data(), dataSS.size());
+    {
         dataSe >> typename_;
         if (typename_ != typeid(T).hash_code())
         {
@@ -181,7 +134,6 @@ std::time_t AgentBase::subscribe(std::string_view name, T& data)
         dataSe >> pubTime;
         return pubTime;
     }
-
 }
 
 
@@ -195,6 +147,7 @@ std::time_t AgentBase::publish(std::string_view name, const T& data)
     if (m_typenameMapPtr->find(typeid(T).hash_code()) == m_typenameMapPtr->end())
     {
         spdlog::error("typename {} have not been Registed.", typeid(T).name()); 
+        return 0;
     }
     std::time_t pubTime= std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     Serializer dataSe;
@@ -202,23 +155,9 @@ std::time_t AgentBase::publish(std::string_view name, const T& data)
     dataSe << data;
 
     dataSe << pubTime;
-    ShmemString nameSS(name, *m_charallocPtr);
-    ShmemString dataSS(dataSe.data(), dataSe.size(), *m_charallocPtr);
-    MapKVType pair_(nameSS, dataSS);
+    m_publish(name,dataSe);
 
-    m_namedMtxPtr->lock();
-    m_mapPtr->insert_or_assign(nameSS, dataSS);
-    m_namedMtxPtr->unlock();
 
-    for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it = m_RPCClientMap.begin(); it != m_RPCClientMap.end(); it++)
-    {
-        std::string ip = it->first.substr(0, it->first.find(':'));
-        if (ip!="shm")
-        {
-            it->second->call<Serializer>("publish_net",dataSe);
-        }
-
-    }
     return pubTime;
 }
 
@@ -231,7 +170,7 @@ void AgentBase::run()
 #define GetAgent(type) extern "C" {DLLEXPORT AgentBase* CreateAgent(){return (AgentBase*)(new type());}; DLLEXPORT void DeleteAgent(AgentBase* oldAgent){if(oldAgent){delete oldAgent;}return;};}
 
 #define RegisteType(type) \
-RegisteType_(\
+m_registeType(\
 typeid(type).hash_code(),\
 typeid(type).name(),\
 std::function<std::string(Serializer)>(\
@@ -246,7 +185,7 @@ std::function<std::string(Serializer)>(\
             anyData>>typeData;\
             std::time_t pusTime;\
             anyData>>pusTime;\
-            json_["pubTime"]=pusTime;\
+            json_["pubTime"]=(long long)pusTime;\
             return json_.dump();\
         }\
         catch (const std::exception& e)\
