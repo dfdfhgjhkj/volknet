@@ -20,6 +20,7 @@ public:
 
 
 private:
+	int mm = 1;
 };
 GetAgent(NewAgent)
 NewAgent::NewAgent()
@@ -52,15 +53,16 @@ void NewAgent::run()
 	spdlog::info("{} subscribe", aa);
 
 	std::function<void()> func1 =std::function<void()>(std::bind(&NewAgent::timeout1, this));
-	std::string funcname1("func1");
 
 	std::function<void()> func5 = std::function<void()>(std::bind(&NewAgent::timeout5, this));
-	std::string funcname5("func5");
+	std::string funcname5("func5");		
+	m_addTimerFunc(UINT64(1), "func1",func1);
 	try
 	{
-		m_setTimerFunc(UINT64(1), "func1",std::move(func1));
-		m_setTimerFunc(UINT64(5), funcname5, std::move(func5));
-		spdlog::info("{} run", this->m_agentName);
+
+		//m_setTimerFunc(UINT64(5), funcname5, std::move(func5));
+		spdlog::info("{} run", this->m_agentName);		
+
 
 	}
 	catch (std::exception& e)
@@ -70,7 +72,13 @@ void NewAgent::run()
 }
 void NewAgent::timeout1()
 {
-	spdlog::info("{} timeout 1", this->m_agentName);
+	spdlog::info(" timeout {}", mm);
+	mm++;
+	if (mm==10000)
+	{
+		spdlog::info("emmmmm");
+		m_alterTimer(1000, "func1");
+	}
 }
 void NewAgent::timeout5()
 {
