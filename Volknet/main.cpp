@@ -38,11 +38,16 @@ std::shared_ptr <MapAllocator> m_mapallocPtr;
 ShmemMap* m_mapPtr;
 std::shared_ptr<boost::interprocess::named_recursive_mutex > m_namedMtxPtr;
 
+
 void timeout()
 {
     timer.expires_at(timer.expires_at() + boost::posix_time::microsec(1000));
     for (ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>::iterator it = timerFuncMapPtr->begin(); it != timerFuncMapPtr->end(); it++)
     {
+        if (it->first==0)
+        {
+            continue;
+        }
         if (count % it->first == 0)
         {
             for (std::map<std::string, std::shared_ptr<std::function<void()>>>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++)
@@ -121,23 +126,23 @@ Serializer subscribe_net(Serializer in)
 int main()
 {
     std::shared_ptr<spdlog::details::thread_pool> tp = std::make_shared<spdlog::details::thread_pool>(1,1);
-    //文件接收机
+   
     std::shared_ptr < spdlog::sinks::rotating_file_sink<std::mutex>> file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("logs/logfile.log", 500 * 1024 * 1024, 1000);
-    // 创建控制台（终端）接收器
+   
     std::shared_ptr<spdlog::sinks::stdout_color_sink_mt> console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
-    // 创建一个多重接收器的 logger
+  
     std::vector<spdlog::sink_ptr> sinks{ console_sink, file_sink };
     std::shared_ptr<spdlog::async_logger> loggerPtr = std::make_shared<spdlog::async_logger>("multi_sink", sinks.begin(), sinks.end(),tp);
 
-    // 设置全局 logger
+  
     spdlog::set_default_logger(loggerPtr);
-    // 设置日志消息格式
+   
     spdlog::set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [thread %t] %v");
 
-    // 设置全局日志等级为 debug，所有日志都会输出
+   
     spdlog::set_level(spdlog::level::debug);
 
-    // 开启日志刷新
+  
     spdlog::flush_on(spdlog::level::info);
 
     spdlog::info("VOLKNET online.");
@@ -152,50 +157,46 @@ int main()
     m_namedMtxPtr = std::make_shared<boost::interprocess::named_recursive_mutex>(boost::interprocess::open_or_create, "map");
     std::shared_ptr<TaskScheduler> taskScheduler = std::make_shared<TaskScheduler>(loggerPtr);
 
-    //设置定时函数，第一个值为毫秒数
     std::shared_ptr<std::function<int(UINT64 num,std::string_view name,  std::function<void()>)>> 
         setTimerFuncPtr=
         std::make_shared<std::function<int(UINT64 num,std::string_view name,  std::function<void()>)>>
         (std::bind(&TaskScheduler::SetTimerFunc,taskScheduler,std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-    //获得定时函数map
-        //设置定时函数，第一个值为毫秒数
-    std::shared_ptr<std::function<int(std::shared_ptr<ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>>&)>>
+    std::shared_ptr<std::function<int(UINT64 num, std::string_view name)>>
         getTimerFuncPtr =
-        std::make_shared<std::function<int(std::shared_ptr<ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>>&)>>
-        (std::bind(&TaskScheduler::GetTimerFunc, taskScheduler, std::placeholders::_1));
+        std::make_shared<std::function<int(UINT64 num, std::string_view name)>>
+        (std::bind(&TaskScheduler::SetFuncTime, taskScheduler, std::placeholders::_1, std::placeholders::_2));
 
-    //添加rpc函数
     std::shared_ptr<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>)>>
         setRPCFuncPtr=
         std::make_shared<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>)>>
         (std::bind(&TaskScheduler::SetRPCFunc, taskScheduler, std::placeholders::_1, std::placeholders::_2));
-    //获得rpc函数
+    
     std::shared_ptr<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&)>>
         getRPCFuncPtr=
         std::make_shared<std::function<int(std::string_view funcName, std::function<int(const std::string&, std::string&)>&)>>
         (std::bind(&TaskScheduler::GetRPCFunc, taskScheduler, std::placeholders::_1, std::placeholders::_2));
-    //添加dll函数,any为std::shared_ptr<std::Function>
+   
     std::shared_ptr<std::function<int(std::string_view funcName, std::any)>>  
         setDllFuncPtr=
         std::make_shared<std::function<int(std::string_view funcName, std::any)>>
         (std::bind(&TaskScheduler::SetDllFunc, taskScheduler, std::placeholders::_1, std::placeholders::_2));
-    //获得dll函数
+    
     std::shared_ptr<std::function<int(std::string_view funcName, std::any&)>>  
         getDllFuncPtr=
         std::make_shared<std::function<int(std::string_view funcName, std::any&)>>
         (std::bind(&TaskScheduler::GetDllFunc, taskScheduler, std::placeholders::_1, std::placeholders::_2));
-    //添加消息函数
+    
     std::shared_ptr<std::function<int(std::string_view queueName, std::shared_ptr<MessageBase>)>>
         pushMessagePtr =
         std::make_shared<std::function<int(std::string_view queueName, std::shared_ptr<MessageBase>)>>
         (std::bind(&TaskScheduler::AddMessage, taskScheduler, std::placeholders::_1, std::placeholders::_2));
-    //添加消息处理函数
+  
     std::shared_ptr<std::function<int(std::string_view, int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>)>>  
         pushCallbackFuncPtr=
         std::make_shared<std::function<int(std::string_view,int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>)>>
         (std::bind(&TaskScheduler::SetAsyncFunc, taskScheduler, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
 
-    spdlog::flush_every(std::chrono::seconds(5)); // 定期刷新日志缓冲区
+    spdlog::flush_every(std::chrono::seconds(5)); 
 
     rapidxml::xml_document<> doc;
     std::ifstream file("Agents/Agents.xml");
@@ -207,9 +208,9 @@ int main()
     // 读取XML文件内容到内存
     std::shared_ptr<std::string> xml_contents=std::make_shared<std::string>((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     file.close();
-    // 解析XML文档
+  
     doc.parse<rapidxml::parse_default>(&(*xml_contents)[0]);
-    // 获取根元素
+ 
     rapidxml::xml_node<>* root = doc.first_node("Agents");
 
     std::vector<std::shared_ptr<AgentBase>> agentPtrVector;
@@ -263,14 +264,97 @@ int main()
             }
         }
     }
-    // 遍历子元素
+
+    std::shared_ptr<std::function<void(size_t a, const char* b, std::function<std::string(Serializer)>&& toStrFunc, std::function<Serializer(std::string)>&& strToFunc)>> registeTypeFuncPtr =
+        std::make_shared<std::function<void(size_t a, const char* b, std::function<std::string(Serializer)> && toStrFunc, std::function<Serializer(std::string)> && strToFunc)>>(
+        [&](size_t a, const char* b, std::function<std::string(Serializer)>&& toStrFunc, std::function<Serializer(std::string)>&& strToFunc)
+        {
+            if (typeToStrFuncMapPtr->find(a) != typeToStrFuncMapPtr->end())
+            {
+                spdlog::error("typename {} have been Registed", b);
+                return;
+            }
+            if (typenameMapPtr->find(a) != typenameMapPtr->end())
+            {
+                spdlog::error("typename {} hash collisions with typename{}", b, (*typenameMapPtr)[a]);
+                return;
+            }
+
+            typeToStrFuncMapPtr->insert(std::pair(a, std::make_pair(toStrFunc, strToFunc)));
+            typenameMapPtr->insert(std::pair(a, b));
+            RPCServerMap["net"]->regist(std::to_string(a) + "ToStr", toStrFunc);
+            RPCServerMap["shm"]->regist(std::to_string(a) + "ToStr", toStrFunc);
+            RPCServerMap["net"]->regist(std::to_string(a) + "ToSe", strToFunc);
+            RPCServerMap["shm"]->regist(std::to_string(a) + "ToSe", strToFunc);
+            return;
+        });
+
+    std::shared_ptr<std::function<void(std::string_view name, Serializer& dataSe)>> subscribeFuncPtr
+        = std::make_shared<std::function<void(std::string_view name, Serializer & dataSe)>>(
+            [&](std::string_view name, Serializer& dataSe)
+            {
+                ShmemString nameSS(name, *m_charallocPtr);
+
+                if (m_mapPtr->find(nameSS) == m_mapPtr->end())
+                {
+
+                    for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it = RPCClientMap.begin(); it != RPCClientMap.end(); it++)
+                    {
+                        std::string ip = it->first.substr(0, it->first.find(':'));
+                        if (ip != "shm")
+                        {
+                            dataSe = it->second->call<Serializer>("subscribe_net", std::string(name)).value();
+                        }
+                    }
+                    return;
+                }
+                else
+                {
+                    ShmemString dataSS(*m_charallocPtr);
+                    m_namedMtxPtr->lock();
+                    dataSS = m_mapPtr->at(nameSS);
+                    m_namedMtxPtr->unlock();
+                    if (dataSS.size() == 0)
+                    {
+                        return;
+                    }
+                    dataSe.input(dataSS.data(), dataSS.size());
+                }
+                return;
+            }
+        );
+    std::shared_ptr<std::function<void(std::string_view name, Serializer& dataSe)>> publishFuncPtr
+        = std::make_shared<std::function<void(std::string_view name, Serializer & dataSe)>>(
+            [&](std::string_view name, Serializer& dataSe)
+            {
+                ShmemString nameSS(name, *m_charallocPtr);
+                ShmemString dataSS(dataSe.data(), dataSe.size(), *m_charallocPtr);
+                MapKVType pair_(nameSS, dataSS);
+
+                m_namedMtxPtr->lock();
+                m_mapPtr->insert_or_assign(nameSS, dataSS);
+                m_namedMtxPtr->unlock();
+
+                for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it = RPCClientMap.begin(); it != RPCClientMap.end(); it++)
+                {
+                    std::string ip = it->first.substr(0, it->first.find(':'));
+                    if (ip != "shm")
+                    {
+                        it->second->call<Serializer>("publish_net", dataSe);
+                    }
+
+                }
+                return;
+            }
+        );
+    
     for (rapidxml::xml_node<>* book = root->first_node("Agent"); book; book = book->next_sibling("Agent")) 
     {
         rapidxml::xml_node<>* name = book->first_node("name");
         if (name) 
         {
             std::string agentName = name->value();
-            // 打印字符串
+     
             spdlog::info("Get agents name {}", agentName);
             if (dllFuncLoaderPtr->openDll("Agents/" + agentName + "/" + agentName + ".dll")!= 0) 
             {
@@ -296,25 +380,24 @@ int main()
             AgentBase* newAgent = (*GetAgent)();
             std::shared_ptr<AgentBase> agentPtr(newAgent);
             agentPtrVector.push_back(agentPtr);
-            //设置定时函数，第一个值为毫秒数
-            agentPtr->m_setTimerFunc= *setTimerFuncPtr;
-            //获得定时函数
-            //设置定时函数，第一个值为毫秒数
-            agentPtr->m_getTimerFunc = *getTimerFuncPtr;
-            //添加rpc函数,any为std::shared_ptr<std::Function>
+
+            agentPtr->m_addTimerFunc = *setTimerFuncPtr;
+         
+            agentPtr->m_alterTimer = *getTimerFuncPtr;
+       
             agentPtr->m_setRPCFunc= *setRPCFuncPtr;
-            //获得rpc函数
+          
             agentPtr->m_getRPCFunc= *getRPCFuncPtr;
-            //添加dll函数,any为std::shared_ptr<std::Function>
+        
             agentPtr->m_setDllFunc= *setDllFuncPtr;
-            //获得dll函数
+           
             agentPtr->m_getDllFunc= *getDllFuncPtr;
-            ////添加消息
-            agentPtr->m_pushMessageFunc= *pushMessagePtr;
-            ////添加消息处理函数
-            agentPtr->m_pushCallbackFunc = *pushCallbackFuncPtr;
+         
+            agentPtr->m_pushMessage= *pushMessagePtr;
+    
+            agentPtr->m_pushCallBackFunc = *pushCallbackFuncPtr;
             agentPtr->m_typenameMapPtr = typenameMapPtr;
-            agentPtr->m_typeToStrFuncMapPtr = typeToStrFuncMapPtr;
+
             agentPtr->m_loggerPtr = loggerPtr;
             agentPtr->m_agentName = agentName;
             for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it_Client = RPCClientMap.begin(); it_Client != RPCClientMap.end(); it_Client++)
@@ -325,18 +408,16 @@ int main()
             {
                 agentPtr->m_RPCServerMap[it_Server->first] = it_Server->second;
             }
-            agentPtr->m_segmentPtr = m_segmentPtr;
-            agentPtr->m_charallocPtr = m_charallocPtr;
-            agentPtr->m_strallocPtr = m_strallocPtr;
-            agentPtr->m_mapallocPtr = m_mapallocPtr;
+            agentPtr->m_registeType = *registeTypeFuncPtr;
+            agentPtr->m_subscribe = *subscribeFuncPtr;
+            agentPtr->m_publish = *publishFuncPtr;
             agentPtr->m_mapPtr = m_mapPtr;
-            agentPtr->m_namedMtxPtr = m_namedMtxPtr;
             agentPtr->initialize();
 
         }
 
     }
-    (*getTimerFuncPtr)(timerFuncMapPtr);
+    timerFuncMapPtr = taskScheduler->m_timerFunctionMapPtr;
     std::vector<std::future<void>> runFuncVector;
     for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it = RPCServerMap.begin(); it != RPCServerMap.end(); it++)
     {
