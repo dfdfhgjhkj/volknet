@@ -66,11 +66,14 @@ public:
         //添加消息处理函数
         std::function<int(std::string_view, int, std::string_view, std::function<void(std::shared_ptr<MessageBase>)>)>  m_pushCallBackFunc;
         //注册类型
-        std::function<void(size_t a, const char* b, std::function<std::string(Serializer)>&& toStrFunc, std::function<Serializer(std::string)>&& strToFunc)> m_registeType;
+        std::function<void(size_t a, const char* b, std::function<void(std::string& jsonStr, Serializer& anyData )>&& toStrFunc, std::function<void(std::string& jsonStr, Serializer& anyData )>&& strToFunc)> m_registeType;
         //subscribe
         std::function<void(std::string_view name, Serializer& dataSe)> m_subscribe;
         //publish
         std::function<void(std::string_view name, Serializer& dataSe)> m_publish;
+
+        std::function<void(std::string& json_str, Serializer& dataSe)> m_SeToJson;
+        std::function<void(std::string& json_str, Serializer& dataSe)> m_JsonToSe;
         //logger
         std::shared_ptr<spdlog::logger> m_loggerPtr;
         //name
@@ -173,47 +176,37 @@ void AgentBase::run()
 m_registeType(\
 typeid(type).hash_code(),\
 typeid(type).name(),\
-std::function<std::string(Serializer)>(\
-    [&](Serializer anyData)\
+std::function<void(std::string& jsonStr, Serializer & anyData)>(\
+    [&](std::string& jsonStr, Serializer & anyData)\
     {\
         try\
         {\
             type typeData;\
-            size_t typename_;\
-            anyData>>typename_;\
-            nlohmann::json json_(typeData);\
             anyData>>typeData;\
-            std::time_t pusTime;\
-            anyData>>pusTime;\
-            json_["pubTime"]=(long long)pusTime;\
-            return json_.dump();\
+            nlohmann::json json_(typeData); \
+            jsonStr = json_.dump(); \
+            return; \
         }\
         catch (const std::exception& e)\
         {\
             spdlog::error("cast fail{}", e.what());\
-            return std::string("cast fail");\
+            return;\
         }\
     }\
 ),\
-std::function<Serializer(std::string)>(\
-    [&](std::string str)\
+std::function<void(std::string& jsonStr, Serializer & anyData)>(\
+    [&](std::string& jsonStr, Serializer & anyData)\
     {\
         try\
         {\
-            Serializer se; \
-            se<<typeid(type).hash_code();\
-            nlohmann::json json_= nlohmann::json::parse(str);\
-            std::time_t pubTime=json_["pubTime"].get<std::time_t>();\
-            json_.erase("pubTime");\
-            se << (nlohmann::json::parse(str).get<type>()); \
-            se<<pubTime;\
-            return se; \
+            nlohmann::json json_= nlohmann::json::parse(jsonStr);\
+            anyData << (json_.get<type>());\
+            return; \
         }\
         catch (const std::exception& e)\
         {\
-            Serializer se;\
             spdlog::error("cast fail{}", e.what()); \
-            return se; \
+            return; \
         }\
     }\
 ))\
