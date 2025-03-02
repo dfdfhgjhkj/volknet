@@ -11,9 +11,9 @@ public:
 
 	NewAgent();
 	virtual ~NewAgent();
-	//初始化
+	
 	virtual void initialize();
-	//运行
+	
 	virtual void run();
 	void timeout1();
 	void timeout5();
@@ -34,9 +34,9 @@ NewAgent::~NewAgent()
 
 void NewAgent::initialize()
 {
-	// 设置全局 logger
+	
 	spdlog::set_default_logger(m_loggerPtr);
-	// 打印字符串
+	
 	spdlog::info("{} initialize", this->m_agentName);
 
 
@@ -48,6 +48,7 @@ void NewAgent::run()
 	std::string topic2 = "topic2";		
 	publish<std::string>(topic1, std::string("11111"));
 	publish<int>("topic2", 1);
+	publish<int>("topic785", 74522);
 	int aa = 2;
 	subscribe<int>("topic2", aa);
 	spdlog::info("{} subscribe", aa);
@@ -76,6 +77,7 @@ void NewAgent::timeout1()
 	mm++;
 	if (mm==10000)
 	{
+		publish<int>("topic785", mm);
 		spdlog::info("emmmmm");
 		m_alterTimer(1000, "func1");
 	}
