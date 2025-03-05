@@ -22,33 +22,34 @@
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
-
-//timer count
-uint64_t count;
-boost::asio::io_context timer_ioc;
+#include <ThreadSafeQueue.hpp>
+uint64_t g_count;
+boost::asio::io_context g_timer_ioc;
 //timer
-boost::asio::deadline_timer timer(boost::asio::deadline_timer(timer_ioc, boost::posix_time::microsec(1000)));
+boost::asio::deadline_timer timer(boost::asio::deadline_timer(g_timer_ioc, boost::posix_time::microsec(1000)));
 
-std::shared_ptr<ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>> timerFuncMapPtr;
+std::shared_ptr<ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>> g_timerFuncMapPtr;
 
-std::shared_ptr <boost::interprocess::managed_shared_memory> m_segmentPtr;
-std::shared_ptr <CharAllocator> m_charallocPtr;
-std::shared_ptr <StringAllocator> m_strallocPtr;
-std::shared_ptr <MapAllocator> m_mapallocPtr;
-ShmemMap* m_mapPtr;
-std::shared_ptr<boost::interprocess::named_recursive_mutex > m_namedMtxPtr;
+std::shared_ptr <boost::interprocess::managed_shared_memory> g_segmentPtr;
+std::shared_ptr <CharAllocator> g_charallocPtr;
+std::shared_ptr <StringAllocator> g_strallocPtr;
+std::shared_ptr <MapAllocator> g_mapallocPtr;
+ShmemMap* g_mapPtr;
+std::shared_ptr<boost::interprocess::named_recursive_mutex > g_namedMtxPtr;
 
+
+std::map<std::string, ThreadSafeQueue<std::string>> g_nameQueueMap;
 
 void timeout()
 {
     timer.expires_at(timer.expires_at() + boost::posix_time::microsec(1000));
-    for (ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>::iterator it = timerFuncMapPtr->begin(); it != timerFuncMapPtr->end(); it++)
+    for (ThreadSafeMap<UINT64, std::map<std::string, std::shared_ptr<std::function<void()>>>>::iterator it = g_timerFuncMapPtr->begin(); it != g_timerFuncMapPtr->end(); it++)
     {
         if (it->first==0)
         {
             continue;
         }
-        if (count % it->first == 0)
+        if (g_count % it->first == 0)
         {
             for (std::map<std::string, std::shared_ptr<std::function<void()>>>::iterator it1 = it->second.begin(); it1 != it->second.end(); it1++)
             {
@@ -68,7 +69,7 @@ void timeout()
         }
 
     }
-    count++;
+    g_count++;
     timer.async_wait(boost::bind(&timeout));
 }
 
@@ -77,7 +78,7 @@ void timer_run()
     try
     {
         timer.async_wait(boost::bind(&timeout));
-        timer_ioc.run();
+        g_timer_ioc.run();
 
     }
     catch (std::exception& e)
@@ -90,13 +91,13 @@ Serializer publish_net(Serializer in)
     Serializer out;
     std::string name_;
     in >> name_;
-    ShmemString nameSS(name_.data(), *m_charallocPtr);
-    ShmemString dataSS(in.data(), in.size(), *m_charallocPtr);
+    ShmemString nameSS(name_.data(), *g_charallocPtr);
+    ShmemString dataSS(in.data(), in.size(), *g_charallocPtr);
     MapKVType pair_(nameSS, dataSS);
 
-    m_namedMtxPtr->lock();
-    m_mapPtr->insert_or_assign(nameSS, dataSS);
-    m_namedMtxPtr->unlock();
+    g_namedMtxPtr->lock();
+    g_mapPtr->insert_or_assign(nameSS, dataSS);
+    g_namedMtxPtr->unlock();
 
     out << 0;
     return out;
@@ -107,17 +108,17 @@ Serializer subscribe_net(Serializer in)
 
     std::string nameStr;
     in >> nameStr;
-    ShmemString dataSS(*m_charallocPtr);
-    ShmemString nameSS(nameStr.data(), *m_charallocPtr);
+    ShmemString dataSS(*g_charallocPtr);
+    ShmemString nameSS(nameStr.data(), *g_charallocPtr);
 
-    if (m_mapPtr->find(nameSS) == m_mapPtr->end())
+    if (g_mapPtr->find(nameSS) == g_mapPtr->end())
     {
         return Serializer();
     }
     {
-        m_namedMtxPtr->lock();
-        dataSS = m_mapPtr->at(nameSS);
-        m_namedMtxPtr->unlock();
+        g_namedMtxPtr->lock();
+        dataSS = g_mapPtr->at(nameSS);
+        g_namedMtxPtr->unlock();
     }
     Serializer out(dataSS.data(), dataSS.size());
     return out;
@@ -127,7 +128,7 @@ int main()
 {
     std::shared_ptr<spdlog::details::thread_pool> tp = std::make_shared<spdlog::details::thread_pool>(1,1);
    
-    std::shared_ptr < spdlog::sinks::rotating_file_sink<std::mutex>> file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("logs/logfile.log", 500 * 1024 * 1024, 1000);
+    std::shared_ptr<spdlog::sinks::rotating_file_sink<std::mutex>> file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>("logs/logfile.log", 500 * 1024 * 1024, 1000);
    
     std::shared_ptr<spdlog::sinks::stdout_color_sink_mt> console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
   
@@ -148,13 +149,13 @@ int main()
     spdlog::info("VOLKNET online.");
     spdlog::info("Establishing battlefield control, standby.");
     spdlog::info("battlefield control online.");    
-    m_segmentPtr = std::make_shared<boost::interprocess::managed_shared_memory>(boost::interprocess::open_or_create, "-1", 65536);
-    m_charallocPtr = std::make_shared<CharAllocator>(m_segmentPtr->get_segment_manager());
-    m_strallocPtr = std::make_shared<StringAllocator>(m_segmentPtr->get_segment_manager());
-    m_mapallocPtr = std::make_shared<MapAllocator>(m_segmentPtr->get_segment_manager());
-    m_mapPtr = m_segmentPtr->find_or_construct<ShmemMap>("map")(*m_mapallocPtr);
+    g_segmentPtr = std::make_shared<boost::interprocess::managed_shared_memory>(boost::interprocess::open_or_create, "-1", 65536);
+    g_charallocPtr = std::make_shared<CharAllocator>(g_segmentPtr->get_segment_manager());
+    g_strallocPtr = std::make_shared<StringAllocator>(g_segmentPtr->get_segment_manager());
+    g_mapallocPtr = std::make_shared<MapAllocator>(g_segmentPtr->get_segment_manager());
+    g_mapPtr = g_segmentPtr->find_or_construct<ShmemMap>("map")(*g_mapallocPtr);
 
-    m_namedMtxPtr = std::make_shared<boost::interprocess::named_recursive_mutex>(boost::interprocess::open_or_create, "map");
+    g_namedMtxPtr = std::make_shared<boost::interprocess::named_recursive_mutex>(boost::interprocess::open_or_create, "map");
     std::shared_ptr<TaskScheduler> taskScheduler = std::make_shared<TaskScheduler>(loggerPtr);
 
     std::shared_ptr<std::function<int(UINT64 num,std::string_view name,  std::function<void()>)>> 
@@ -264,7 +265,24 @@ int main()
             }
         }
     }
+    std::shared_ptr<std::function<void(std::string_view)>> addNameQueueFuncPtr = std::make_shared<std::function<void(std::string_view)>>(
+        [&](std::string_view name)
+        {
+            g_nameQueueMap.insert(std::make_pair(std::string(name), ThreadSafeQueue<std::string>()) );
+        }
+    );
+    std::shared_ptr<std::function<void(std::vector<std::string>&)>> getAllTopicFuncPtr = std::make_shared<std::function<void(std::vector<std::string>&)>>(
+        [&](std::vector<std::string>& topicVector)
+        {
+            MapIterator iter;
+            for (MapIterator iter = g_mapPtr->begin(); iter != g_mapPtr->end(); ++iter)
+            {
+                topicVector.push_back(std::string(iter->first.data(), iter->first.size()));
+            }
+        }
+    );
 
+    (*setDllFuncPtr)("getAllTopic",std::make_any<std::shared_ptr<std::function<void(std::vector<std::string>&)>>>(getAllTopicFuncPtr));
     std::shared_ptr<std::function<void(size_t a, const char* b, std::function<void(std::string& jsonStr, Serializer& SeData)>&& toStrFunc, std::function<void(std::string& jsonStr, Serializer& SeData)>&& strToFunc)>> registeTypeFuncPtr =
         std::make_shared<std::function<void(size_t a, const char* b, std::function<void(std::string & jsonStr, Serializer & SeData)> && toStrFunc, std::function<void(std::string & jsonStr, Serializer & SeData)> && strToFunc)>>(
         [&](size_t a, const char* b, std::function<void(std::string& jsonStr, Serializer& SeData)>&& toStrFunc, std::function<void(std::string& jsonStr, Serializer& SeData)>&& strToFunc)
@@ -314,9 +332,9 @@ int main()
         = std::make_shared<std::function<void(std::string_view name, Serializer & dataSe)>>(
             [&](std::string_view name, Serializer& dataSe)
             {
-                ShmemString nameSS(name, *m_charallocPtr);
+                ShmemString nameSS(name, *g_charallocPtr);
 
-                if (m_mapPtr->find(nameSS) == m_mapPtr->end())
+                if (g_mapPtr->find(nameSS) == g_mapPtr->end())
                 {
 
                     for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it = RPCClientMap.begin(); it != RPCClientMap.end(); it++)
@@ -325,20 +343,20 @@ int main()
                         if (ip != "shm")
                         {
                             dataSe = it->second->call<Serializer>("subscribe_net", std::string(name)).value();
+                            return;
                         }
                         if (dataSe.size() == 0)
                         {
                             return;
                         }
                     }
-                    return;
                 }
                 else
                 {
-                    ShmemString dataSS(*m_charallocPtr);
-                    m_namedMtxPtr->lock();
-                    dataSS = m_mapPtr->at(nameSS);
-                    m_namedMtxPtr->unlock();
+                    ShmemString dataSS(*g_charallocPtr);
+                    g_namedMtxPtr->lock();
+                    dataSS = g_mapPtr->at(nameSS);
+                    g_namedMtxPtr->unlock();
 
                     dataSe.input(dataSS.data(), dataSS.size());
                 }
@@ -349,13 +367,18 @@ int main()
         = std::make_shared<std::function<void(std::string_view name, Serializer & dataSe)>>(
             [&](std::string_view name, Serializer& dataSe)
             {
-                ShmemString nameSS(name, *m_charallocPtr);
-                ShmemString dataSS(dataSe.data(), dataSe.size(), *m_charallocPtr);
+                for (auto it = g_nameQueueMap.begin(); it !=g_nameQueueMap.end(); it++)
+                {
+                    std::string Topic = std::string(name);
+                    it->second.push(Topic);
+                }
+                ShmemString nameSS(name, *g_charallocPtr);
+                ShmemString dataSS(dataSe.data(), dataSe.size(), *g_charallocPtr);
                 MapKVType pair_(nameSS, dataSS);
 
-                m_namedMtxPtr->lock();
-                m_mapPtr->insert_or_assign(nameSS, dataSS);
-                m_namedMtxPtr->unlock();
+                g_namedMtxPtr->lock();
+                g_mapPtr->insert_or_assign(nameSS, dataSS);
+                g_namedMtxPtr->unlock();
 
                 for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it = RPCClientMap.begin(); it != RPCClientMap.end(); it++)
                 {
@@ -370,7 +393,7 @@ int main()
             }
         );
     
-    //subscribe_str
+    //SeToJsonFunc
     std::shared_ptr<std::function<void(std::string& jsonStr, Serializer& dataSe)>> SeToJsonFuncPtr=
         std::make_shared<std::function<void(std::string& jsonStr, Serializer & dataSe)>>(
             [&](std::string& jsonStr, Serializer& dataSe)
@@ -386,7 +409,7 @@ int main()
             }
         
         );
-    //publish_str
+    //JsonToSeFunc
     std::shared_ptr<std::function<void(std::string& jsonStr, Serializer& dataSe)>> JsonToSeFuncPtr =
         std::make_shared<std::function<void(std::string & jsonStr, Serializer & dataSe)>>(
             [&](std::string& jsonStr, Serializer& dataSe)
@@ -473,13 +496,13 @@ int main()
             agentPtr->m_SeToJson = *SeToJsonFuncPtr;
             agentPtr->m_JsonToSe= *JsonToSeFuncPtr;
 
-            agentPtr->m_mapPtr = m_mapPtr;
+            agentPtr->m_mapPtr = g_mapPtr;
             agentPtr->initialize();
 
         }
 
     }
-    timerFuncMapPtr = taskScheduler->m_timerFunctionMapPtr;
+    g_timerFuncMapPtr = taskScheduler->m_timerFunctionMapPtr;
     std::vector<std::future<void>> runFuncVector;
     for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it = RPCServerMap.begin(); it != RPCServerMap.end(); it++)
     {
