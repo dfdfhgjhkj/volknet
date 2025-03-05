@@ -31,16 +31,13 @@ public:
 
     BlackBoardAgent();
     virtual ~BlackBoardAgent();
-    
+    //初始化
     virtual void initialize();
-    
+    //运行
     virtual void run();
 private:
 
-    
-    void getAllTopic(std::vector<std::string>& topicstdVector);
-    void getAllValue(std::vector<std::string>& valuestdVector);
-    std::unordered_map<std::string, int64_t> m_bbHashMap;
+    std::shared_ptr<std::function<void(std::vector<std::string>&)>> m_getAllTopicFuncPtr;
 
 
 };
@@ -56,7 +53,7 @@ BlackBoardAgent::~BlackBoardAgent()
 
 void BlackBoardAgent::initialize()
 {
-    
+    // 设置全局 logger
     spdlog::set_default_logger(m_loggerPtr);    
     RegisteType(int);
     RegisteType(double);
@@ -65,23 +62,36 @@ void BlackBoardAgent::initialize()
     RegisteType(std::vector<double>);
     RegisteType(std::vector<std::string>);
     RegisteType(person);
-
-
+    std::any topicFunc;
+    m_getDllFunc("getAllTopic", topicFunc);
+    try
+    {
+        m_getAllTopicFuncPtr = std::any_cast<std::shared_ptr<std::function<void(std::vector<std::string>&)>>>(topicFunc);
+    }
+    catch (const std::exception& e)
+    {
+        spdlog::error("{} error", e.what());
+    }
 
     std::function<int(const std::string&, std::string&)> RpcGetTopicFunc = [&](const std::string& in, std::string& out)
         {
 
             std::vector<std::string> topic_vector;
-            MapIterator iter;                
+            (*m_getAllTopicFuncPtr)(topic_vector);
+            //MapIterator iter;                
             std::vector<nlohmann::json> vjson;
-            for (MapIterator iter = m_mapPtr->begin(); iter != m_mapPtr->end(); ++iter)
+            for (auto iter = topic_vector.begin(); iter != topic_vector.end(); ++iter)
             {            
                 nlohmann::json json_;
-                std::string topic(iter->first.data(), iter->first.size());
-                json_["topic"] = topic;
+                json_["topic"] = *iter;
                 Serializer SeData;
-                m_subscribe(topic, SeData);
+                spdlog::info("{} dump1", *iter);
+                m_subscribe(iter->c_str(), SeData);
                 std::string value;
+                if (SeData.size()==0)
+                {
+                    continue;
+                }
                 m_SeToJson(value, SeData);
                 json_["value"] = value;
                 vjson.push_back(json_);
@@ -105,12 +115,8 @@ void BlackBoardAgent::initialize()
             nlohmann::json j_vec(jsonStr);
             out = j_vec.dump();
             return 0;
-
         };
-
     m_setRPCFunc("getValue", std::move(RpcGetValueFunc));
-
-
     spdlog::info("{} initialize", this->m_agentName);
    
 }
@@ -121,30 +127,5 @@ void BlackBoardAgent::run()
     spdlog::info("{} run", this->m_agentName);
 }
 
-
-void BlackBoardAgent::getAllTopic(std::vector<std::string>& topicstdVector)
-{
-    MapIterator iter;
-    for (MapIterator iter = m_mapPtr->begin(); iter != m_mapPtr->end(); ++iter)
-    {
-        nlohmann::json json_;
-        json_["topic"] = std::string(iter->first.data(), iter->first.size());
-        json_["value"] = std::string(iter->second.data(), iter->second.size());
-        topicstdVector.push_back(json_.dump());
-        spdlog::info("{} dump", json_.dump());
-
-    }
-    
-}
-
-void BlackBoardAgent::getAllValue(std::vector<std::string>& valuestdVector)
-{
-    MapIterator iter;
-    for (MapIterator iter = m_mapPtr->begin(); iter != m_mapPtr->end(); ++iter)
-    {
-        valuestdVector.push_back(std::string(iter->second.data(), iter->second.size()));
-    }
-
-}
 
 
