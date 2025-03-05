@@ -75,7 +75,7 @@ void NewAgent::timeout1()
 {
 	spdlog::info(" timeout {}", mm);
 	mm++;
-	if (mm==10000)
+	if (mm>=10000)
 	{
 		publish<int>("topic785", mm);
 		spdlog::info("emmmmm");
