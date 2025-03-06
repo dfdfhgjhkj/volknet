@@ -15,12 +15,7 @@
 #include <nlohmann/json.hpp>
 #include <ButtonRPC.hpp>
 #include <chrono>
-#include <boost/interprocess/managed_shared_memory.hpp>
-#include <boost/interprocess/containers/vector.hpp>
-#include <boost/interprocess/containers/string.hpp>
-#include <boost/interprocess/containers/map.hpp>
-#include <boost/interprocess/allocators/allocator.hpp>
-#include <boost/interprocess/sync/named_recursive_mutex.hpp>
+
 #ifdef _MSC_VER
 #define DLLEXPORT __declspec(dllexport)
 #endif
