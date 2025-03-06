@@ -23,6 +23,21 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <ThreadSafeQueue.hpp>
+#include <boost/interprocess/managed_shared_memory.hpp>
+#include <boost/interprocess/containers/vector.hpp>
+#include <boost/interprocess/containers/string.hpp>
+#include <boost/interprocess/containers/map.hpp>
+#include <boost/interprocess/allocators/allocator.hpp>
+#include <boost/interprocess/sync/named_recursive_mutex.hpp>
+//using namespace boost::interprocess;
+typedef boost::interprocess::allocator<char, boost::interprocess::managed_shared_memory::segment_manager> CharAllocator;
+typedef boost::interprocess::basic_string<char, std::char_traits<char>, CharAllocator> ShmemString;
+typedef boost::interprocess::allocator<ShmemString, boost::interprocess::managed_shared_memory::segment_manager> StringAllocator;
+typedef boost::interprocess::vector<ShmemString, StringAllocator> ShmemVector;
+typedef std::pair<const ShmemString, ShmemString> MapKVType;
+typedef boost::interprocess::allocator<MapKVType, boost::interprocess::managed_shared_memory::segment_manager> MapAllocator;
+typedef boost::interprocess::map< ShmemString, ShmemString, std::less<ShmemString>, MapAllocator>  ShmemMap;
+typedef boost::interprocess::map< ShmemString, ShmemString, std::less<ShmemString>, MapAllocator>::iterator MapIterator;
 uint64_t g_count;
 boost::asio::io_context g_timer_ioc;
 //timer
