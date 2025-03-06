@@ -32,19 +32,6 @@
 
 
 
-
-//using namespace boost::interprocess;
-typedef boost::interprocess::allocator<char, boost::interprocess::managed_shared_memory::segment_manager> CharAllocator;
-typedef boost::interprocess::basic_string<char, std::char_traits<char>, CharAllocator> ShmemString;
-typedef boost::interprocess::allocator<ShmemString, boost::interprocess::managed_shared_memory::segment_manager> StringAllocator;
-typedef boost::interprocess::vector<ShmemString, StringAllocator> ShmemVector;
-typedef std::pair<const ShmemString, ShmemString> MapKVType;
-typedef boost::interprocess::allocator<MapKVType, boost::interprocess::managed_shared_memory::segment_manager> MapAllocator;
-typedef boost::interprocess::map< ShmemString, ShmemString, std::less<ShmemString>, MapAllocator>  ShmemMap;
-typedef boost::interprocess::map< ShmemString, ShmemString, std::less<ShmemString>, MapAllocator>::iterator MapIterator;
-
-
-
 class AgentBase
 {    
 
