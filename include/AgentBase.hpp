@@ -15,7 +15,6 @@
 #include <nlohmann/json.hpp>
 #include <ButtonRPC.hpp>
 #include <chrono>
-
 #ifdef _MSC_VER
 #define DLLEXPORT __declspec(dllexport)
 #endif
@@ -23,6 +22,10 @@
 #ifndef _MSC_VER
 #define DLLEXPORT 
 #endif
+
+
+
+
 
 
 
@@ -54,15 +57,20 @@ public:
         //publish
         std::function<void(std::string_view name, Serializer& dataSe)> m_publish;
 
+        //subscribe_with_regex
+        std::function<void(std::string_view name, Serializer& dataSe)> m_regexSubscribe;
+
         std::function<void(std::string& json_str, Serializer& dataSe)> m_SeToJson;
         std::function<void(std::string& json_str, Serializer& dataSe)> m_JsonToSe;
+
+
+
         //logger
         std::shared_ptr<spdlog::logger> m_loggerPtr;
         //name
         std::string m_agentName;
         std::map<std::string, std::shared_ptr<ButtonRPC>> m_RPCServerMap;
         std::map<std::string, std::shared_ptr<ButtonRPC>> m_RPCClientMap;
-        ShmemMap* m_mapPtr;
         std::shared_ptr<ThreadSafeMap<size_t, std::string>> m_typenameMapPtr;
 
         AgentBase();
@@ -78,6 +86,13 @@ public:
         template <typename T>
         std::time_t publish(std::string_view name, const T& data);
 
+
+
+
+        template <typename T>
+        std::map<std::string,std::time_t> regexSubscribe(std::string_view regex, std::map<std::string,T>& dataMap);
+
+
      private:
          std::shared_mutex m_mutex;
 };
@@ -90,6 +105,44 @@ AgentBase::AgentBase()
 AgentBase::~AgentBase()
 {
 
+}
+
+template <typename T>
+std::map<std::string, std::time_t> regexSubscribe(std::string_view regex, std::map<std::string, T>& dataMap)
+{
+    std::map<std::string, std::time_t> returnMap;
+    T data;
+    std::time_t pubTime;
+    size_t typename_;
+    if (m_typenameMapPtr->find(typeid(T).hash_code()) == m_typenameMapPtr->end())
+    {
+        spdlog::error("typename {} have not been Registed.", typeid(T).name());
+        return returnMap;
+    }
+    std::map<std::string,Serializer> dataSeMap;
+    m_regexSubscribe(regex, dataSeMap);
+
+    if (dataSeMap.size() == 0)
+    {
+        return returnMap;
+    }
+    else
+    {
+        for (std::map<std::string, Serializer>::iterator it = dataSeMap.begin(); it != dataSeMap.end(); it++)
+        {
+            it->second >> typename_;
+            if (typename_ != typeid(T).hash_code())
+            {
+                returnMap.clear();
+                return returnMap;
+            }
+            it->second >> data;
+            it->second >> pubTime;
+            returnMap[it->first]=pubTime;
+            dataMap[it->first] = data;
+        }
+
+    }
 }
 template <typename T>
 std::time_t AgentBase::subscribe(std::string_view name, T& data)
@@ -141,8 +194,6 @@ std::time_t AgentBase::publish(std::string_view name, const T& data)
 
     dataSe << pubTime;
     m_publish(name,dataSe);
-
-
     return pubTime;
 }
 
