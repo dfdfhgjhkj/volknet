@@ -575,7 +575,7 @@ int main()
             agentPtr->m_publish = *publishFuncPtr;
             agentPtr->m_SeToJson = *SeToJsonFuncPtr;
             agentPtr->m_JsonToSe= *JsonToSeFuncPtr;
-
+            agentPtr->m_regexSubscribe = *regexSubscribeFuncPtr;
             agentPtr->initialize();
 
         }
