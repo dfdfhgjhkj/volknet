@@ -58,7 +58,7 @@ public:
         std::function<void(std::string_view name, Serializer& dataSe)> m_publish;
 
         //subscribe_with_regex
-        std::function<void(std::string_view name, Serializer& dataSe)> m_regexSubscribe;
+        std::function<void(std::string_view regex, std::map<std::string, Serializer>& dataSeMap)> m_regexSubscribe;
 
         std::function<void(std::string& json_str, Serializer& dataSe)> m_SeToJson;
         std::function<void(std::string& json_str, Serializer& dataSe)> m_JsonToSe;
@@ -108,7 +108,7 @@ AgentBase::~AgentBase()
 }
 
 template <typename T>
-std::map<std::string, std::time_t> regexSubscribe(std::string_view regex, std::map<std::string, T>& dataMap)
+std::map<std::string, std::time_t> AgentBase::regexSubscribe(std::string_view regex, std::map<std::string, T>& dataMap)
 {
     std::map<std::string, std::time_t> returnMap;
     T data;
