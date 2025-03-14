@@ -23,6 +23,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <ThreadSafeQueue.hpp>
+#include <boost/regex.hpp>
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/containers/vector.hpp>
 #include <boost/interprocess/containers/string.hpp>
@@ -38,6 +39,8 @@ typedef std::pair<const ShmemString, ShmemString> MapKVType;
 typedef boost::interprocess::allocator<MapKVType, boost::interprocess::managed_shared_memory::segment_manager> MapAllocator;
 typedef boost::interprocess::map< ShmemString, ShmemString, std::less<ShmemString>, MapAllocator>  ShmemMap;
 typedef boost::interprocess::map< ShmemString, ShmemString, std::less<ShmemString>, MapAllocator>::iterator MapIterator;
+
+
 uint64_t g_count;
 boost::asio::io_context g_timer_ioc;
 //timer
@@ -138,7 +141,26 @@ Serializer subscribe_net(Serializer in)
     Serializer out(dataSS.data(), dataSS.size());
     return out;
 }
+std::map<std::string, Serializer> regexSubscribe_net(std::string regexStr)
+{
+    std::map<std::string, Serializer> dataSeMap;
+    boost::regex regex(regexStr.data());
+    for (ShmemMap::const_iterator it = g_mapPtr->begin(); it != g_mapPtr->end(); it++)
+    {
+        if (boost::regex_match(it->first.c_str(), regex))
+        {
+            Serializer dataSe;
+            ShmemString dataSS(*g_charallocPtr);
+            g_namedMtxPtr->lock();
+            dataSS = it->second;
+            g_namedMtxPtr->unlock();
 
+            dataSe.input(dataSS.data(), dataSS.size());
+            dataSeMap[it->first.c_str()] = dataSe;
+        }
+    }
+    return dataSeMap;
+}
 int main()
 {
     std::shared_ptr<spdlog::details::thread_pool> tp = std::make_shared<spdlog::details::thread_pool>(1,1);
@@ -261,6 +283,7 @@ int main()
                     RPCServerMap["net"]->as_server(ip, port);                    
                     RPCServerMap["net"]->regist("subscribe_net", &subscribe_net);
                     RPCServerMap["net"]->regist("publish_net", &publish_net);
+                    RPCServerMap["net"]->regist("regexSubscribe_net", &regexSubscribe_net);
                 }
 
             }
@@ -342,6 +365,48 @@ int main()
                 
             return;
         });
+
+    std::shared_ptr<std::function<void(std::string_view name, std::map<std::string, Serializer>& dataSeMap)>> regexSubscribeFuncPtr
+        = std::make_shared<std::function<void(std::string_view regex, std::map<std::string, Serializer>&dataSeMap)>>(
+            [&](std::string_view regexStr, std::map<std::string, Serializer>& dataSeMap)
+            {             
+                boost::regex regex(regexStr.data());
+                for (ShmemMap::const_iterator it = g_mapPtr->begin(); it != g_mapPtr->end(); it++)
+                {
+                    if (boost::regex_match(it->first.c_str(), regex))
+                    {
+                        Serializer dataSe;
+                        ShmemString dataSS(*g_charallocPtr);
+                        g_namedMtxPtr->lock();
+                        dataSS = it->second;
+                        g_namedMtxPtr->unlock();
+
+                        dataSe.input(dataSS.data(), dataSS.size());
+                        dataSeMap[it->first.c_str()] = dataSe;
+                    }
+                    
+                }                
+                std::map<std::string, Serializer> dataSeMapNet;
+                for (std::map<std::string, std::shared_ptr<ButtonRPC>>::iterator it = RPCClientMap.begin(); it != RPCClientMap.end(); it++)
+                {
+                    std::string ip = it->first.substr(0, it->first.find(':'));
+                    if (ip != "shm")
+                    {
+                        it->second->call<std::map<std::string, Serializer>>("publish_net", dataSeMapNet);
+                    }                
+                    for (std::map<std::string, Serializer>::iterator it = dataSeMapNet.begin(); it!= dataSeMapNet.end(); it++)
+                    {
+                    if (dataSeMap.find(it->first) != dataSeMap.end())
+                    {
+                        dataSeMap.insert(*it);
+                    }
+                }
+
+                }
+
+                return;
+            }
+        );
 
     std::shared_ptr<std::function<void(std::string_view name, Serializer& dataSe)>> subscribeFuncPtr
         = std::make_shared<std::function<void(std::string_view name, Serializer & dataSe)>>(
@@ -511,7 +576,6 @@ int main()
             agentPtr->m_SeToJson = *SeToJsonFuncPtr;
             agentPtr->m_JsonToSe= *JsonToSeFuncPtr;
 
-            agentPtr->m_mapPtr = g_mapPtr;
             agentPtr->initialize();
 
         }
