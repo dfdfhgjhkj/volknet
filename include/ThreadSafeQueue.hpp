@@ -33,7 +33,7 @@ public:
         if (m_queue.empty()) {
             throw std::logic_error("Queue is empty.");
         }
-        return m_queue.top();
+        return m_queue.front();
     }
 
     // 返回队列是否为空
@@ -48,7 +48,7 @@ public:
     {
         std::unique_lock<std::mutex> lock(m_mutex);
         m_condition.wait(lock, [&] { return !m_queue.empty(); });
-        T value = m_queue.top();
+        T value = m_queue.front();
         m_queue.pop();
         return value;
     }
