@@ -22,6 +22,8 @@ using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 
 //sse Function map
 std::map<std::string, std::function<void(ThreadSafeQueue<std::string>*)>> sseFuncMap;
+std::map<std::string, int> sseIntervalMap;
+
 void split(std::string& s, char delimiter, std::vector<std::string>& tokens)
 {
     tokens.clear();
@@ -38,7 +40,6 @@ template <class Body, class Allocator>
 bool
 handle_request(
     tcp::socket& socket,
-    beast::string_view doc_root,
     http::request<Body, http::basic_fields<Allocator>>&& req,
     beast::error_code& ec)
 {
@@ -108,7 +109,7 @@ handle_request(
     }
 
 
-    if (sseFuncMap.find(tokens[2]) == sseFuncMap.end())
+    if (sseFuncMap.find(tokens[2]) == sseFuncMap.end()||sseIntervalMap.find(tokens[2]) == sseIntervalMap.end())
     {
         beast::write(socket, http::message_generator(std::move(not_found(req.target()))), ec);
         return false;
@@ -152,16 +153,16 @@ handle_request(
             {
                 int count = 1;
                 while (1)
-                {   http::response<http::string_body> res;
+                {
+                    http::response<http::string_body> res;
                     if (count)
-                    {                    
+                    {
                         res.set(http::field::access_control_allow_origin, "*");
-                        std::cout << "out";
                         res.version(req.version());
-                        res.result(http::status::ok);                    
+                        res.result(http::status::ok);
                         res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
                         res.set(http::field::content_type, "text/event-stream");
-                        res.body()="retry: 10000\nevent: start\n";
+                        res.body() = std::string("retry: ")+std::to_string(sseIntervalMap[tokens[2]]) + "\nevent: start\n";
                         beast::write(socket, http::message_generator(std::move(res)), ec);
                         count--;
                     }
@@ -217,8 +218,7 @@ fail(beast::error_code ec, char const* what)
 // Handles an HTTP server connection
 void
 do_session(
-    tcp::socket& socket,
-    std::shared_ptr<std::string const> const& doc_root)
+    tcp::socket& socket)
 {
     beast::error_code ec;
 
@@ -236,7 +236,7 @@ do_session(
             return fail(ec, "read");
 
         // Handle request
-         bool keep_alive=handle_request(socket ,*doc_root, std::move(req), ec);
+        bool keep_alive = handle_request(socket, std::move(req), ec);
 
 
 
@@ -262,21 +262,21 @@ int main()
 {
     try
     {
+        sseIntervalMap["1"] = 1000;
         sseFuncMap["1"] = [](ThreadSafeQueue<std::string>* tsq)
             {
                 int i = 10;
                 while (i--)
                 {
-                    tsq->push(std::to_string(i) +   "次,喵\n");
+                    tsq->push("data: "+std::to_string(i) + "次,喵\n");
                     Sleep(1000);
                     std::cout << "________" << i << std::endl;
                 }
-                tsq->push("喵喵喵\n\n");
+                tsq->push(std::string("") + "data: " + "喵喵喵\n\n");
 
             };
         auto const address = net::ip::make_address("127.0.0.1");
         auto const port = 8082;
-        auto const doc_root = std::make_shared<std::string>("C:\\VulkanSDK\\1.3.296.0");
         auto const threads = 1;
 
         // The io_context is required for all I/O
@@ -295,8 +295,7 @@ int main()
             // Launch the session, transferring ownership of the socket
             std::thread{ std::bind(
                 &do_session,
-                std::move(socket),
-                doc_root) }.detach();
+                std::move(socket)) }.detach();
         }
     }
     catch (const std::exception& e)
